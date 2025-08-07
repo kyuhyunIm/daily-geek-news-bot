@@ -77,8 +77,6 @@ function getNewsFromCache(count = 5, offset = 0) {
 
 updateNewsCache();
 
-setInterval(updateNewsCache, 15 * 60 * 1000);
-
 module.exports = {
   getNewsFromCache,
   isCacheReady: () => newsCache.items.length > 0 && newsCache.initialized,
