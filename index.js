@@ -87,7 +87,7 @@ cron.schedule(
   async () => {
     console.log("🚀 데일리 뉴스 전송 작업을 시작합니다.");
     try {
-      const newsItems = await getNews(3, 0); // 항상 최신 뉴스를 가져옴
+      const newsItems = await getNews(7, 0); // 항상 최신 뉴스를 가져옴
 
       // 데일리 뉴스는 버튼 없이 심플하게 구성
       const simpleBlocks = [
@@ -150,7 +150,7 @@ app.command("/뉴스", async ({command, ack, say}) => {
   await ack();
 
   try {
-    const newsItems = await getNews(3, 0); // 처음에는 offset 0으로 시작
+    const newsItems = await getNews(7, 0); // 처음에는 offset 0으로 시작
     const messageBlocks = formatNewsToBlocks(newsItems, 0);
 
     await say({
@@ -170,7 +170,7 @@ async function handleNewsButtonClick(body, ack, respond) {
   const offset = parseInt(actionValue.replace("load_news_", ""), 10);
 
   try {
-    const newsItems = await getNews(3, offset);
+    const newsItems = await getNews(7, offset);
     const newBlocks = formatNewsToBlocks(newsItems, offset);
 
     // respond()를 사용하여 기존 메시지를 업데이트

@@ -21,7 +21,7 @@ const RSS_FEEDS = [
  * @param {number} offset - Number of news items to skip (pagination)
  * @returns {Promise<Array>} News item arrangement
  */
-async function getNews(count = 3, offset = 0) {
+async function getNews(count = 7, offset = 0) {
   const allItems = [];
 
   // Improve speed by processing all feeds asynchronously at once.
