@@ -1,8 +1,9 @@
 // index.js
 require("dotenv").config();
 const {App} = require("@slack/bolt");
+const http = require("http");
 const cron = require("node-cron");
-const {getNews} = require("./modules/news"); // 수정한 함수를 가져옴
+const {getNews} = require("./modules/news");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -11,10 +12,10 @@ const app = new App({
 });
 
 /**
- * 뉴스 목록과 현재 offset을 기반으로 Slack 메시지 블록을 생성하는 함수
- * @param {Array} newsItems - 표시할 뉴스 아이템 배열
- * @param {number} currentOffset - 현재 뉴스의 시작 위치
- * @returns {Array} Slack 메시지 블록
+ * Function that generates Slack message blocks based on the news list and current offset
+ * @param {Array} newsItems - Arrangement of news items to be displayed
+ * @param {number} currentOffset - Current news start position
+ * @returns {Array} Slack message block
  */
 function formatNewsToBlocks(newsItems, currentOffset = 0) {
   const isInitial = currentOffset === 0;
@@ -55,7 +56,6 @@ function formatNewsToBlocks(newsItems, currentOffset = 0) {
 
   blocks.push({type: "divider"});
 
-  // 액션 버튼 추가
   const actions = [];
   if (newsItems.length > 0) {
     actions.push({
@@ -81,15 +81,13 @@ function formatNewsToBlocks(newsItems, currentOffset = 0) {
   return blocks;
 }
 
-// --- 데일리 뉴스 전송 스케줄러 (변경 없음) ---
 cron.schedule(
   "0 9 * * 1-5",
   async () => {
     console.log("🚀 데일리 뉴스 전송 작업을 시작합니다.");
     try {
-      const newsItems = await getNews(7, 0); // 항상 최신 뉴스를 가져옴
+      const newsItems = await getNews(7, 0);
 
-      // 데일리 뉴스는 버튼 없이 심플하게 구성
       const simpleBlocks = [
         {
           type: "header",
@@ -145,7 +143,6 @@ cron.schedule(
   }
 );
 
-// --- /뉴스 명령어 처리 로직 (수정) ---
 app.command("/뉴스", async ({command, ack, say}) => {
   await ack();
 
@@ -163,7 +160,6 @@ app.command("/뉴스", async ({command, ack, say}) => {
   }
 });
 
-// --- 버튼 클릭 이벤트 핸들러 (신규 추가) ---
 async function handleNewsButtonClick(body, ack, respond) {
   await ack();
   const actionValue = body.actions[0].value;
@@ -173,7 +169,6 @@ async function handleNewsButtonClick(body, ack, respond) {
     const newsItems = await getNews(7, offset);
     const newBlocks = formatNewsToBlocks(newsItems, offset);
 
-    // respond()를 사용하여 기존 메시지를 업데이트
     await respond({
       replace_original: true,
       blocks: newBlocks,
@@ -195,7 +190,22 @@ app.action("load_first_news", async ({body, ack, respond}) => {
   await handleNewsButtonClick(body, ack, respond);
 });
 
-(async () => {
+// Creating a simple web server to respond to health checks
+const server = http.createServer((req, res) => {
+  res.writeHead(200, {"Content-Type": "text/plain"});
+  res.end("OK");
+});
+
+async function startApp() {
   await app.start();
   console.log("⚡️ Daily Geek News Bot이 소켓 모드로 실행 중입니다!");
+
+  const port = process.env.PORT || 8080;
+  server.listen(port, () => {
+    console.log(`🏥 헬스 체크 서버가 포트 ${port}에서 실행 중입니다.`);
+  });
+}
+
+(async () => {
+  await startApp();
 })();
