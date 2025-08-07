@@ -156,9 +156,8 @@ cron.schedule(
   }
 );
 
-app.command("/뉴스", async ({command, ack, respond}) => {
+app.command("/뉴스", async ({ack, respond}) => {
   const startTime = Date.now();
-  const channel_id = command.channel_id;
 
   await ack();
 
@@ -168,6 +167,22 @@ app.command("/뉴스", async ({command, ack, respond}) => {
         response_type: "ephemeral",
         text: "⏳ 뉴스를 처음으로 불러오는 중입니다... 잠시만 기다려주세요. (최대 1분 소요)",
       });
+
+      const waitForCache = () => new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (isCacheReady()) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 1000);
+        
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          resolve();
+        }, 60000);
+      });
+      
+      await waitForCache();
     }
 
     const newsItems = getNewsFromCache(5, 0);
@@ -184,9 +199,8 @@ app.command("/뉴스", async ({command, ack, respond}) => {
     const duration = Date.now() - startTime;
     console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
 
-    await app.client.chat.postMessage({
-      token: process.env.SLACK_BOT_TOKEN,
-      channel: channel_id,
+    await respond({
+      response_type: "in_channel",
       text: "최신 테크 뉴스입니다!",
       blocks: messageBlocks,
     });
@@ -205,7 +219,7 @@ app.command("/뉴스", async ({command, ack, respond}) => {
 
 app.action(
   ["load_older_news", "load_first_news"],
-  async ({action, ack, respond}) => {
+  async ({action, ack, client, body}) => {
     await ack();
 
     const offset = parseInt(action.value.replace("load_news_", ""), 10);
@@ -214,8 +228,11 @@ app.action(
       const newsItems = getNewsFromCache(5, offset);
       const newBlocks = formatNewsToBlocks(newsItems, offset);
 
-      await respond({
-        replace_original: true,
+      await client.chat.update({
+        token: process.env.SLACK_BOT_TOKEN,
+        channel: body.channel.id,
+        ts: body.message.ts,
+        text: offset === 0 ? "최신 테크 뉴스입니다!" : `이전 테크 뉴스입니다! (${offset + 1}-${offset + newsItems.length})`,
         blocks: newBlocks,
       });
     } catch (error) {
