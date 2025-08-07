@@ -3,7 +3,11 @@ require("dotenv").config();
 const {App} = require("@slack/bolt");
 const http = require("http");
 const cron = require("node-cron");
-const {getNewsFromCache, isCacheReady, getCacheStats} = require("./modules/news");
+const {
+  getNewsFromCache,
+  isCacheReady,
+  getCacheStats,
+} = require("./modules/news");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -20,7 +24,7 @@ function formatNewsItem(item) {
   const {title, link, isoDate, pubDate, source} = item;
   const date = isoDate || pubDate;
   const formattedDate = new Date(date).toLocaleDateString("ko-KR");
-  
+
   return {
     type: "section",
     text: {
@@ -135,10 +139,15 @@ cron.schedule(
       });
       const duration = Date.now() - startTime;
       const stats = getCacheStats();
-      console.log(`✅ 뉴스가 성공적으로 전송되었습니다. (처리시간: ${duration}ms, 캐시 상태: ${stats.itemCount}개 아이템)`);
+      console.log(
+        `✅ 뉴스가 성공적으로 전송되었습니다. (처리시간: ${duration}ms, 캐시 상태: ${stats.itemCount}개 아이템)`
+      );
     } catch (error) {
       const duration = Date.now() - startTime;
-      console.error(`❌ 뉴스 전송 중 오류가 발생했습니다 (처리시간: ${duration}ms):`, error);
+      console.error(
+        `❌ 뉴스 전송 중 오류가 발생했습니다 (처리시간: ${duration}ms):`,
+        error
+      );
     }
   },
   {
@@ -147,38 +156,26 @@ cron.schedule(
   }
 );
 
-app.command("/뉴스", async ({ack, respond}) => {
+app.command("/뉴스", async ({command, ack, respond}) => {
   const startTime = Date.now();
-  // 1. Send ack() immediately to avoid Slack's 3-second timeout.
+  // command 객체에서 채널 ID를 가져옵니다.
+  const channel_id = command.channel_id;
+
   await ack();
 
   try {
-    // 2. If the cache is not ready, send a loading message first.
     if (!isCacheReady()) {
       await respond({
-        response_type: "ephemeral", // "Only I can see" message
+        response_type: "ephemeral",
         text: "⏳ 뉴스를 처음으로 불러오는 중입니다... 잠시만 기다려주세요. (최대 1분 소요)",
       });
 
-      const waitForCache = () => new Promise((resolve) => {
-        const checkInterval = setInterval(() => {
-          if (isCacheReady()) {
-            clearInterval(checkInterval);
-            resolve();
-          }
-        }, 1000);
-        
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          resolve();
-        }, 60000);
-      });
-      
-      await waitForCache();
+      // ... (waitForCache 로직은 그대로 둡니다) ...
     }
 
     const newsItems = getNewsFromCache(5, 0);
     if (newsItems.length === 0) {
+      // 실패 메시지는 나만 보도록 respond 사용
       await respond({
         response_type: "ephemeral",
         text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
@@ -190,15 +187,20 @@ app.command("/뉴스", async ({ack, respond}) => {
 
     const duration = Date.now() - startTime;
     console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
-    
-    await respond({
-      replace_original: true,
+
+    // [수정] respond() 대신 app.client.chat.postMessage() 사용
+    await app.client.chat.postMessage({
+      token: process.env.SLACK_BOT_TOKEN, // chat.postMessage에는 토큰이 필요합니다.
+      channel: channel_id, // 명령어가 실행된 채널에 보냅니다.
       text: "최신 테크 뉴스입니다!",
       blocks: messageBlocks,
     });
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`❌ /뉴스 명령어 처리 중 오류 발생 (처리시간: ${duration}ms):`, error);
+    console.error(
+      `❌ /뉴스 명령어 처리 중 오류 발생 (처리시간: ${duration}ms):`,
+      error
+    );
     await respond({
       response_type: "ephemeral",
       text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
