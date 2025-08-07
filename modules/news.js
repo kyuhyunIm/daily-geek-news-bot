@@ -8,51 +8,84 @@ const RSS_FEEDS = [
     name: "LineTechNews",
     url: "https://techblog.lycorp.co.jp/ko/feed/index.xml",
   },
-  {name: "D2", url: "https://d2.naver.com/d2.atom"},
   {name: "CoupangNewsFeed", url: "https://medium.com/feed/coupang-engineering"},
-  {name: "WoowahanTechBlog", url: "https://techblog.woowahan.com/feed/"},
   {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
   {name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn"},
 ];
 
-/**
- * Function to retrieve news from RSS feeds
- * @param {number} count - Number of news items to fetch
- * @param {number} offset - Number of news items to skip (pagination)
- * @returns {Promise<Array>} News item arrangement
- */
-async function getNews(count = 7, offset = 0) {
-  const allItems = [];
+let newsCache = {
+  items: [],
+  timestamp: null,
+  isUpdating: false,
+  initialized: false,
+};
 
-  // Improve speed by processing all feeds asynchronously at once.
-  const promises = RSS_FEEDS.map(async (feed) => {
-    try {
-      // To ensure sufficient news items, we take 20 items from each feed.
-      const parsedFeed = await parser.parseURL(feed.url);
-      const items = parsedFeed.items
-        .slice(0, 20) // Get enough posts from each feed
-        .map((item) => ({...item, source: feed.name}));
-      return items;
-    } catch (error) {
-      console.error(
-        `[${feed.name}] RSS 피드를 가져오는 중 오류 발생:`,
-        error.message
-      );
-      return []; // Returns an empty array when an error occurs.
-    }
-  });
+async function updateNewsCache() {
+  if (newsCache.isUpdating) {
+    console.log("🔄 이미 뉴스 캐시 업데이트가 진행 중입니다.");
+    return;
+  }
 
-  const results = await Promise.all(promises);
-  results.forEach((items) => allItems.push(...items));
+  console.log("🚀 뉴스 캐시 업데이트를 시작합니다...");
+  newsCache.isUpdating = true;
 
-  // Sort all items by latest date
-  allItems.sort(
-    (a, b) =>
-      new Date(b.isoDate || b.pubDate) - new Date(a.isoDate || a.pubDate)
-  );
+  try {
+    const promises = RSS_FEEDS.map((feed) =>
+      parser
+        .parseURL(feed.url)
+        .then((parsedFeed) =>
+          parsedFeed.items.map((item) => ({...item, source: feed.name}))
+        )
+        .catch((error) => {
+          console.error(`[${feed.name}] RSS 피드 파싱 오류:`, error.message);
+          return [];
+        })
+    );
 
-  // Return the final result by applying offset and count.
-  return allItems.slice(offset, offset + count);
+    const results = await Promise.all(promises);
+    const allItems = results.flat();
+
+    // Sort by latest date
+    allItems.sort(
+      (a, b) =>
+        new Date(b.isoDate || b.pubDate) - new Date(a.isoDate || a.pubDate)
+    );
+
+    // Cache update
+    newsCache.items = allItems;
+    newsCache.timestamp = new Date();
+    newsCache.initialized = true;
+    console.log(
+      `✅ 뉴스 캐시가 업데이트되었습니다. (총 ${allItems.length}개 항목)`
+    );
+  } catch (error) {
+    console.error("❌ 뉴스 캐시 업데이트 중 심각한 오류 발생:", error);
+  } finally {
+    newsCache.isUpdating = false;
+  }
 }
 
-module.exports = {getNews};
+function getNewsFromCache(count = 5, offset = 0) {
+  if (newsCache.items.length === 0) {
+    if (!newsCache.isUpdating && !newsCache.initialized) {
+      updateNewsCache();
+    }
+    return [];
+  }
+  return newsCache.items.slice(offset, offset + count);
+}
+
+updateNewsCache();
+
+setInterval(updateNewsCache, 15 * 60 * 1000);
+
+module.exports = {
+  getNewsFromCache,
+  isCacheReady: () => newsCache.items.length > 0 && newsCache.initialized,
+  getCacheStats: () => ({
+    itemCount: newsCache.items.length,
+    lastUpdate: newsCache.timestamp,
+    isUpdating: newsCache.isUpdating,
+    initialized: newsCache.initialized,
+  }),
+};

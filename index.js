@@ -3,13 +3,32 @@ require("dotenv").config();
 const {App} = require("@slack/bolt");
 const http = require("http");
 const cron = require("node-cron");
-const {getNews} = require("./modules/news");
+const {getNewsFromCache, isCacheReady, getCacheStats} = require("./modules/news");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
   appToken: process.env.SLACK_APP_TOKEN,
   socketMode: true,
 });
+
+/**
+ * Function that formats news items to Slack-compatible text block
+ * @param {Object} item - News item
+ * @returns {Object} Formatted block
+ */
+function formatNewsItem(item) {
+  const {title, link, isoDate, pubDate, source} = item;
+  const date = isoDate || pubDate;
+  const formattedDate = new Date(date).toLocaleDateString("ko-KR");
+  
+  return {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*<${link}|${title.trim()}>*\n_${source} | ${formattedDate}_`,
+    },
+  };
+}
 
 /**
  * Function that generates Slack message blocks based on the news list and current offset
@@ -41,17 +60,7 @@ function formatNewsToBlocks(newsItems, currentOffset = 0) {
   }
 
   newsItems.forEach((item) => {
-    const {title, link, isoDate, pubDate, source} = item;
-    const date = isoDate || pubDate;
-    const formattedDate = new Date(date).toLocaleDateString("ko-KR");
-
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*<${link}|${title.trim()}>*\n_${source} | ${formattedDate}_`,
-      },
-    });
+    blocks.push(formatNewsItem(item));
   });
 
   blocks.push({type: "divider"});
@@ -84,9 +93,10 @@ function formatNewsToBlocks(newsItems, currentOffset = 0) {
 cron.schedule(
   "0 9 * * 1-5",
   async () => {
+    const startTime = Date.now();
     console.log("🚀 데일리 뉴스 전송 작업을 시작합니다.");
     try {
-      const newsItems = await getNews(7, 0);
+      const newsItems = getNewsFromCache(5, 0);
 
       const simpleBlocks = [
         {
@@ -102,16 +112,7 @@ cron.schedule(
         {type: "divider"},
       ];
       newsItems.forEach((item) => {
-        const {title, link, isoDate, pubDate, source} = item;
-        const date = isoDate || pubDate;
-        const formattedDate = new Date(date).toLocaleDateString("ko-KR");
-        simpleBlocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*<${link}|${title.trim()}>*\n_${source} | ${formattedDate}_`,
-          },
-        });
+        simpleBlocks.push(formatNewsItem(item));
       });
       simpleBlocks.push(
         {type: "divider"},
@@ -132,9 +133,12 @@ cron.schedule(
         text: "오늘의 데일리 테크 뉴스입니다!",
         blocks: simpleBlocks,
       });
-      console.log("✅ 뉴스가 성공적으로 전송되었습니다.");
+      const duration = Date.now() - startTime;
+      const stats = getCacheStats();
+      console.log(`✅ 뉴스가 성공적으로 전송되었습니다. (처리시간: ${duration}ms, 캐시 상태: ${stats.itemCount}개 아이템)`);
     } catch (error) {
-      console.error("❌ 뉴스 전송 중 오류가 발생했습니다:", error);
+      const duration = Date.now() - startTime;
+      console.error(`❌ 뉴스 전송 중 오류가 발생했습니다 (처리시간: ${duration}ms):`, error);
     }
   },
   {
@@ -143,30 +147,71 @@ cron.schedule(
   }
 );
 
-app.command("/뉴스", async ({command, ack, say}) => {
+app.command("/뉴스", async ({ack, respond}) => {
+  const startTime = Date.now();
+  // 1. Send ack() immediately to avoid Slack's 3-second timeout.
   await ack();
 
   try {
-    const newsItems = await getNews(7, 0); // 처음에는 offset 0으로 시작
+    // 2. If the cache is not ready, send a loading message first.
+    if (!isCacheReady()) {
+      await respond({
+        response_type: "ephemeral", // "Only I can see" message
+        text: "⏳ 뉴스를 처음으로 불러오는 중입니다... 잠시만 기다려주세요. (최대 1분 소요)",
+      });
+
+      const waitForCache = () => new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (isCacheReady()) {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 1000);
+        
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          resolve();
+        }, 60000);
+      });
+      
+      await waitForCache();
+    }
+
+    const newsItems = getNewsFromCache(5, 0);
+    if (newsItems.length === 0) {
+      await respond({
+        response_type: "ephemeral",
+        text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
+      });
+      return;
+    }
+
     const messageBlocks = formatNewsToBlocks(newsItems, 0);
 
-    await say({
+    const duration = Date.now() - startTime;
+    console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
+    
+    await respond({
+      replace_original: true,
       text: "최신 테크 뉴스입니다!",
       blocks: messageBlocks,
     });
   } catch (error) {
-    console.error("❌ /뉴스 명령어 처리 중 오류 발생:", error);
-    await say("뉴스를 가져오는 데 실패했습니다. 😭");
+    const duration = Date.now() - startTime;
+    console.error(`❌ /뉴스 명령어 처리 중 오류 발생 (처리시간: ${duration}ms):`, error);
+    await respond({
+      response_type: "ephemeral",
+      text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
+    });
   }
 });
 
-async function handleNewsButtonClick(body, ack, respond) {
+app.action(/load_news_(.+)/, async ({action, ack, respond}) => {
   await ack();
-  const actionValue = body.actions[0].value;
-  const offset = parseInt(actionValue.replace("load_news_", ""), 10);
+  const offset = parseInt(action.value.replace("load_news_", ""), 10);
 
   try {
-    const newsItems = await getNews(7, offset);
+    const newsItems = getNewsFromCache(5, offset);
     const newBlocks = formatNewsToBlocks(newsItems, offset);
 
     await respond({
@@ -175,23 +220,11 @@ async function handleNewsButtonClick(body, ack, respond) {
     });
   } catch (error) {
     console.error("❌ 뉴스 업데이트 중 오류:", error);
-    await respond({
-      replace_original: false,
-      text: "오류가 발생하여 뉴스를 가져올 수 없습니다.",
-    });
   }
-}
-
-app.action("load_older_news", async ({body, ack, respond}) => {
-  await handleNewsButtonClick(body, ack, respond);
-});
-
-app.action("load_first_news", async ({body, ack, respond}) => {
-  await handleNewsButtonClick(body, ack, respond);
 });
 
 // Creating a simple web server to respond to health checks
-const server = http.createServer((req, res) => {
+const server = http.createServer((_req, res) => {
   res.writeHead(200, {"Content-Type": "text/plain"});
   res.end("OK");
 });
