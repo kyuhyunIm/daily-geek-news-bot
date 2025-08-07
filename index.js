@@ -237,7 +237,6 @@ app.command("/뉴스", async ({ack, respond}) => {
   }
 });
 
-// 봇 멘션 이벤트 핸들러 (@봇이름 태그 시)
 app.event("app_mention", async ({event, client}) => {
   const startTime = Date.now();
 
