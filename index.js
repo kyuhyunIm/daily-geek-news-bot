@@ -74,7 +74,7 @@ function formatNewsToBlocks(newsItems, currentOffset = 0) {
     actions.push({
       type: "button",
       text: {type: "plain_text", text: "더 이전 뉴스 보기 ➡️", emoji: true},
-      value: `load_news_${currentOffset + 5}`, // 다음 offset 값을 value에 저장
+      value: `load_news_${currentOffset + 5}`,
       action_id: "load_older_news",
     });
   }
@@ -158,7 +158,6 @@ cron.schedule(
 
 app.command("/뉴스", async ({command, ack, respond}) => {
   const startTime = Date.now();
-  // command 객체에서 채널 ID를 가져옵니다.
   const channel_id = command.channel_id;
 
   await ack();
@@ -169,13 +168,10 @@ app.command("/뉴스", async ({command, ack, respond}) => {
         response_type: "ephemeral",
         text: "⏳ 뉴스를 처음으로 불러오는 중입니다... 잠시만 기다려주세요. (최대 1분 소요)",
       });
-
-      // ... (waitForCache 로직은 그대로 둡니다) ...
     }
 
     const newsItems = getNewsFromCache(5, 0);
     if (newsItems.length === 0) {
-      // 실패 메시지는 나만 보도록 respond 사용
       await respond({
         response_type: "ephemeral",
         text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
@@ -188,10 +184,9 @@ app.command("/뉴스", async ({command, ack, respond}) => {
     const duration = Date.now() - startTime;
     console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
 
-    // [수정] respond() 대신 app.client.chat.postMessage() 사용
     await app.client.chat.postMessage({
-      token: process.env.SLACK_BOT_TOKEN, // chat.postMessage에는 토큰이 필요합니다.
-      channel: channel_id, // 명령어가 실행된 채널에 보냅니다.
+      token: process.env.SLACK_BOT_TOKEN,
+      channel: channel_id,
       text: "최신 테크 뉴스입니다!",
       blocks: messageBlocks,
     });
@@ -208,22 +203,26 @@ app.command("/뉴스", async ({command, ack, respond}) => {
   }
 });
 
-app.action(/load_news_(.+)/, async ({action, ack, respond}) => {
-  await ack();
-  const offset = parseInt(action.value.replace("load_news_", ""), 10);
+app.action(
+  ["load_older_news", "load_first_news"],
+  async ({action, ack, respond}) => {
+    await ack();
 
-  try {
-    const newsItems = getNewsFromCache(5, offset);
-    const newBlocks = formatNewsToBlocks(newsItems, offset);
+    const offset = parseInt(action.value.replace("load_news_", ""), 10);
 
-    await respond({
-      replace_original: true,
-      blocks: newBlocks,
-    });
-  } catch (error) {
-    console.error("❌ 뉴스 업데이트 중 오류:", error);
+    try {
+      const newsItems = getNewsFromCache(5, offset);
+      const newBlocks = formatNewsToBlocks(newsItems, offset);
+
+      await respond({
+        replace_original: true,
+        blocks: newBlocks,
+      });
+    } catch (error) {
+      console.error(`❌ Action ID '${action.action_id}' 처리 중 오류:`, error);
+    }
   }
-});
+);
 
 // Creating a simple web server to respond to health checks
 const server = http.createServer((_req, res) => {
