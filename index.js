@@ -1,12 +1,7 @@
 require("dotenv").config();
 const {App} = require("@slack/bolt");
 const http = require("http");
-const cron = require("node-cron");
-const {
-  getNewsFromCache,
-  isCacheReady,
-  getCacheStats,
-} = require("./modules/news");
+const {getNewsFromCache, isCacheReady} = require("./modules/news");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -101,79 +96,6 @@ function formatNewsToBlocks(newsItems, currentOffset = 0) {
 
   return blocks;
 }
-
-cron.schedule(
-  "0 9 * * 1-5",
-  async () => {
-    const startTime = Date.now();
-    console.log("🚀 데일리 뉴스 전송 작업을 시작합니다.");
-    try {
-      const newsItems = getNewsFromCache(5, 0);
-
-      const simpleBlocks = [
-        {
-          type: "header",
-          text: {
-            type: "plain_text",
-            text: `📰 Daily Tech News - ${new Date().toLocaleDateString(
-              "ko-KR"
-            )}`,
-            emoji: true,
-          },
-        },
-        {type: "divider"},
-      ];
-      newsItems.forEach((item) => {
-        simpleBlocks.push(formatNewsItem(item));
-      });
-      simpleBlocks.push(
-        {type: "divider"},
-        {
-          type: "context",
-          elements: [
-            {
-              type: "mrkdwn",
-              text: "`daily-geek-news-bot`이 전해드렸습니다. ✨",
-            },
-          ],
-        }
-      );
-
-      try {
-        await app.client.chat.postMessage({
-          token: process.env.SLACK_BOT_TOKEN,
-          channel: process.env.SLACK_TARGET_CHANNEL,
-          text: "오늘의 데일리 테크 뉴스입니다!",
-          blocks: simpleBlocks,
-        });
-      } catch (messageError) {
-        console.error("❌ Slack 메시지 전송 실패:", messageError.message);
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-        await app.client.chat.postMessage({
-          token: process.env.SLACK_BOT_TOKEN,
-          channel: process.env.SLACK_TARGET_CHANNEL,
-          text: "오늘의 데일리 테크 뉴스입니다!",
-          blocks: simpleBlocks,
-        });
-      }
-      const duration = Date.now() - startTime;
-      const stats = getCacheStats();
-      console.log(
-        `✅ 뉴스가 성공적으로 전송되었습니다. (처리시간: ${duration}ms, 캐시 상태: ${stats.itemCount}개 아이템)`
-      );
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      console.error(
-        `❌ 뉴스 전송 중 오류가 발생했습니다 (처리시간: ${duration}ms):`,
-        error
-      );
-    }
-  },
-  {
-    scheduled: true,
-    timezone: "Asia/Seoul",
-  }
-);
 
 app.command("/뉴스", async ({ack, respond}) => {
   const startTime = Date.now();
@@ -452,9 +374,76 @@ app.action("load_first_news", async ({action, ack, respond}) => {
 });
 
 // Creating a simple web server to respond to health checks
-const server = http.createServer((_req, res) => {
-  res.writeHead(200, {"Content-Type": "text/plain"});
-  res.end("OK");
+const server = http.createServer(async (req, res) => {
+  if (req.url === "/health" || req.url === "/") {
+    res.writeHead(200, {"Content-Type": "text/plain"});
+    res.end("OK");
+    return;
+  }
+
+  if (req.url === "/daily-news" && req.method === "POST") {
+    console.log("🚀 Cloud Scheduler로부터 데일리 뉴스 전송 요청을 받았습니다.");
+
+    try {
+      const newsItems = getNewsFromCache(5, 0);
+
+      const simpleBlocks = [
+        {
+          type: "header",
+          text: {
+            type: "plain_text",
+            text: `📰 Daily Tech News - ${new Date().toLocaleDateString(
+              "ko-KR"
+            )}`,
+            emoji: true,
+          },
+        },
+        {type: "divider"},
+      ];
+
+      newsItems.forEach((item) => {
+        simpleBlocks.push(formatNewsItem(item));
+      });
+
+      simpleBlocks.push(
+        {type: "divider"},
+        {
+          type: "context",
+          elements: [
+            {
+              type: "mrkdwn",
+              text: "`daily-geek-news-bot`이 전해드렸습니다. ✨",
+            },
+          ],
+        }
+      );
+
+      await app.client.chat.postMessage({
+        token: process.env.SLACK_BOT_TOKEN,
+        channel: process.env.SLACK_TARGET_CHANNEL,
+        text: "오늘의 데일리 테크 뉴스입니다!",
+        blocks: simpleBlocks,
+      });
+
+      res.writeHead(200, {"Content-Type": "application/json"});
+      res.end(
+        JSON.stringify({
+          success: true,
+          message: "뉴스가 성공적으로 전송되었습니다.",
+        })
+      );
+      console.log("✅ 뉴스가 성공적으로 전송되었습니다.");
+    } catch (error) {
+      console.error("❌ 뉴스 전송 중 오류가 발생했습니다:", error);
+      res.writeHead(500, {"Content-Type": "application/json"});
+      res.end(JSON.stringify({success: false, error: error.message}));
+    }
+    return;
+  }
+
+  // 404 처리
+  res.writeHead(404, {"Content-Type": "text/plain"});
+  res.end("Not Found");
 });
 
 async function startApp() {

@@ -15,7 +15,6 @@ const RSS_FEEDS = [
 
 let newsCache = {
   items: [],
-  timestamp: null,
   isUpdating: false,
   initialized: false,
 };
@@ -80,10 +79,4 @@ updateNewsCache();
 module.exports = {
   getNewsFromCache,
   isCacheReady: () => newsCache.items.length > 0 && newsCache.initialized,
-  getCacheStats: () => ({
-    itemCount: newsCache.items.length,
-    lastUpdate: newsCache.timestamp,
-    isUpdating: newsCache.isUpdating,
-    initialized: newsCache.initialized,
-  }),
 };

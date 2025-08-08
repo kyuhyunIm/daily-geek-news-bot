@@ -12,7 +12,6 @@
   "dependencies": {
     "@slack/bolt": "^4.4.0",
     "dotenv": "^17.2.1",
-    "node-cron": "^4.2.1",
     "rss-parser": "^3.13.0"
   }
 }
