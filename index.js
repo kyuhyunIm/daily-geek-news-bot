@@ -375,6 +375,10 @@ app.action("load_first_news", async ({action, ack, respond}) => {
 
 // Creating a simple web server to respond to health checks
 const server = http.createServer(async (req, res) => {
+  // 모든 요청 로깅 추가
+  console.log(`📥 Incoming request: ${req.method} ${req.url}`);
+  console.log(`📋 Headers:`, req.headers);
+
   if (req.url === "/health" || req.url === "/") {
     res.writeHead(200, {"Content-Type": "text/plain"});
     res.end("OK");
