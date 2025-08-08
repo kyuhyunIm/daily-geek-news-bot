@@ -1,6 +1,13 @@
-// modules/news.js
 const Parser = require("rss-parser");
-const parser = new Parser();
+
+const parser = new Parser({
+  timeout: 120000,
+  maxRedirects: 5,
+  headers: {
+    "User-Agent":
+      "daily-geek-news-bot/1.0 (+https://github.com/kyuhyunIm/daily-geek-news-bot)",
+  },
+});
 
 const RSS_FEEDS = [
   {name: "GeekNewsFeed", url: "https://news.hada.io/rss/news"},
