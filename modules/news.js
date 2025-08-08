@@ -94,6 +94,8 @@ async function updateNewsCache() {
   }
 }
 
+updateNewsCache();
+
 function getNewsFromCache(count = 5, offset = 0) {
   if (isCacheExpired() && !newsCache.isUpdating) {
     console.log("🔄 캐시 갱신을 시작합니다...");
