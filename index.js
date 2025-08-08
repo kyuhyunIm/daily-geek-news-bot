@@ -381,7 +381,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url === "/daily-news" && req.method === "POST") {
+  if (req.url.includes("/daily-geek-news-bot") && req.method === "POST") {
     console.log("🚀 Cloud Scheduler로부터 데일리 뉴스 전송 요청을 받았습니다.");
 
     try {
