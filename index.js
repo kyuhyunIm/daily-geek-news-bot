@@ -375,9 +375,15 @@ app.action("load_first_news", async ({action, ack, respond}) => {
 
 // Creating a simple web server to respond to health checks
 const server = http.createServer(async (req, res) => {
-  // 모든 요청 로깅 추가
-  console.log(`📥 Incoming request: ${req.method} ${req.url}`);
-  console.log(`📋 Headers:`, req.headers);
+  // 모든 요청 로깅 추가 (더 자세히)
+  console.log(`📥 === REQUEST DEBUG INFO ===`);
+  console.log(`Method: ${req.method}`);
+  console.log(`URL: "${req.url}"`);
+  console.log(`URL type: ${typeof req.url}`);
+  console.log(`URL length: ${req.url ? req.url.length : "undefined"}`);
+  console.log(`Full request object keys:`, Object.keys(req));
+  console.log(`Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`=========================`);
 
   if (req.url === "/health" || req.url === "/") {
     res.writeHead(200, {"Content-Type": "text/plain"});
