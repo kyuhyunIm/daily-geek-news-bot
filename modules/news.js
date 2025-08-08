@@ -15,9 +15,32 @@ const RSS_FEEDS = [
 
 let newsCache = {
   items: [],
+  timestamp: null,
   isUpdating: false,
   initialized: false,
+  TTL: 30 * 60 * 1000, // 30 minute TTL (milliseconds)
 };
+
+function isCacheExpired() {
+  if (!newsCache.timestamp) {
+    console.log("🕐 캐시 타임스탬프가 없습니다. 초기 로드가 필요합니다.");
+    return true;
+  }
+
+  const now = Date.now();
+  const elapsed = now - newsCache.timestamp;
+  const isExpired = elapsed > newsCache.TTL;
+
+  if (isExpired) {
+    console.log(
+      `🕐 캐시가 만료되었습니다. (${Math.round(
+        elapsed / 1000
+      )}초 경과, TTL: ${Math.round(newsCache.TTL / 1000)}초)`
+    );
+  }
+
+  return isExpired;
+}
 
 async function updateNewsCache() {
   if (newsCache.isUpdating) {
@@ -65,16 +88,25 @@ async function updateNewsCache() {
 }
 
 function getNewsFromCache(count = 5, offset = 0) {
+  if (isCacheExpired() && !newsCache.isUpdating) {
+    console.log("🔄 캐시 갱신을 시작합니다...");
+    updateNewsCache();
+  }
+
   if (newsCache.items.length === 0) {
-    if (!newsCache.isUpdating && !newsCache.initialized) {
-      updateNewsCache();
-    }
+    console.log("📭 캐시가 비어있습니다. 업데이트 완료를 기다려주세요.");
     return [];
   }
-  return newsCache.items.slice(offset, offset + count);
+
+  const result = newsCache.items.slice(offset, offset + count);
+  console.log(
+    `📰 캐시에서 뉴스 ${result.length}개를 반환합니다. (offset: ${offset})`
+  );
+
+  return result;
 }
 
-updateNewsCache();
+console.log("📚 News 모듈이 로드되었습니다. TTL 기반 캐시가 활성화되었습니다.");
 
 module.exports = {
   getNewsFromCache,
