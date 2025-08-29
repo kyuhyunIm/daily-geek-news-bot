@@ -23,7 +23,7 @@ async function parseRSSWithRetry(feed, maxRetries = 3) {
         `✅ [${feed.name}] RSS 피드 파싱 완료 (${duration}ms, ${parsedFeed.items.length}개 아이템, 시도: ${attempt}/${maxRetries})`
       );
 
-      return parsedFeed.items.map((item) => ({...item, source: feed.name}));
+      return parsedFeed.items.map((item) => ({ ...item, source: feed.name }));
     } catch (error) {
       const duration = Date.now() - startTime;
       const isLastAttempt = attempt === maxRetries;
@@ -70,104 +70,117 @@ async function parseRSSWithRetry(feed, maxRetries = 3) {
 }
 
 const RSS_FEEDS = [
-  {name: "GeekNewsFeed", url: "https://news.hada.io/rss/news"},
+  { name: "GeekNewsFeed", url: "https://news.hada.io/rss/news" },
   {
     name: "LineTechNews",
     url: "https://techblog.lycorp.co.jp/ko/feed/index.xml",
   },
-  {name: "CoupangNewsFeed", url: "https://medium.com/feed/coupang-engineering"},
-  {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
-  {name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn"},
+  {
+    name: "CoupangNewsFeed",
+    url: "https://medium.com/feed/coupang-engineering",
+  },
+  { name: "Toss Tech", url: "https://toss.tech/rss.xml" },
+  { name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn" },
 ];
 
-let newsCache = {
-  items: [],
-  timestamp: null,
-  isUpdating: false,
-  initialized: false,
-  TTL: 30 * 60 * 1000, // 30 minute TTL (milliseconds)
-};
+let isLoadingNews = false;
 
-function isCacheExpired() {
-  if (!newsCache.timestamp) {
-    console.log("🕐 캐시 타임스탬프가 없습니다. 초기 로드가 필요합니다.");
-    return true;
+async function fetchLatestNews() {
+  if (isLoadingNews) {
+    console.log("🔄 이미 뉴스를 불러오는 중입니다.");
+    return [];
   }
 
-  const now = Date.now();
-  const elapsed = now - newsCache.timestamp;
-  const isExpired = elapsed > newsCache.TTL;
-
-  if (isExpired) {
-    console.log(
-      `🕐 캐시가 만료되었습니다. (${Math.round(
-        elapsed / 1000
-      )}초 경과, TTL: ${Math.round(newsCache.TTL / 1000)}초)`
-    );
-  }
-
-  return isExpired;
-}
-
-async function updateNewsCache() {
-  if (newsCache.isUpdating) {
-    console.log("🔄 이미 뉴스 캐시 업데이트가 진행 중입니다.");
-    return;
-  }
-
-  console.log("🚀 뉴스 캐시 업데이트를 시작합니다...");
-  newsCache.isUpdating = true;
+  console.log("🚀 최신 뉴스를 불러옵니다...");
+  isLoadingNews = true;
 
   try {
     const promises = RSS_FEEDS.map((feed) => parseRSSWithRetry(feed));
-
     const results = await Promise.all(promises);
     const allItems = results.flat();
 
-    // Sort by latest date
-    allItems.sort(
+    // 오늘 날짜 필터링 (시간대 고려)
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    
+    const todayItems = allItems.filter(item => {
+      if (!item.isoDate && !item.pubDate) return false;
+      
+      try {
+        const itemDate = new Date(item.isoDate || item.pubDate);
+        // 유효한 날짜인지 확인
+        if (isNaN(itemDate.getTime())) return false;
+        
+        return itemDate >= todayStart && itemDate <= todayEnd;
+      } catch (error) {
+        console.warn(`⚠️ 날짜 파싱 실패: ${item.isoDate || item.pubDate}`);
+        return false;
+      }
+    });
+
+    // 날짜순 정렬 (최신순)
+    todayItems.sort(
       (a, b) =>
         new Date(b.isoDate || b.pubDate) - new Date(a.isoDate || a.pubDate)
     );
 
-    // Cache update
-    newsCache.items = allItems;
-    newsCache.timestamp = new Date();
-    newsCache.initialized = true;
     console.log(
-      `✅ 뉴스 캐시가 업데이트되었습니다. (총 ${allItems.length}개 항목)`
+      `✅ 오늘의 뉴스 ${todayItems.length}개를 불러왔습니다. (전체: ${allItems.length}개)`
     );
+
+    return todayItems;
   } catch (error) {
-    console.error("❌ 뉴스 캐시 업데이트 중 심각한 오류 발생:", error);
+    console.error("❌ 오늘의 뉴스를 불러오는 중 오류 발생:", error);
+    return [];
   } finally {
-    newsCache.isUpdating = false;
+    isLoadingNews = false;
   }
 }
 
-updateNewsCache();
-
-function getNewsFromCache(count = 5, offset = 0) {
-  if (isCacheExpired() && !newsCache.isUpdating) {
-    console.log("🔄 캐시 갱신을 시작합니다...");
-    updateNewsCache();
-  }
-
-  if (newsCache.items.length === 0) {
-    console.log("📭 캐시가 비어있습니다. 업데이트 완료를 기다려주세요.");
+async function fetchAllNews(limit = null) {
+  if (isLoadingNews) {
+    console.log("🔄 이미 뉴스를 불러오는 중입니다.");
     return [];
   }
 
-  const result = newsCache.items.slice(offset, offset + count);
-  console.log(
-    `📰 캐시에서 뉴스 ${result.length}개를 반환합니다. (offset: ${offset})`
-  );
+  console.log("🚀 전체 뉴스를 불러옵니다...");
+  isLoadingNews = true;
 
-  return result;
+  try {
+    const promises = RSS_FEEDS.map((feed) => parseRSSWithRetry(feed));
+    const results = await Promise.all(promises);
+    const allItems = results.flat();
+
+    // 유효한 날짜를 가진 아이템만 필터링
+    const validItems = allItems.filter(item => {
+      if (!item.isoDate && !item.pubDate) return false;
+      const date = new Date(item.isoDate || item.pubDate);
+      return !isNaN(date.getTime());
+    });
+
+    // 날짜순 정렬 (최신순)
+    validItems.sort(
+      (a, b) =>
+        new Date(b.isoDate || b.pubDate) - new Date(a.isoDate || a.pubDate)
+    );
+
+    const resultItems = limit ? validItems.slice(0, limit) : validItems;
+    
+    console.log(`✅ 전체 뉴스 ${resultItems.length}개를 불러왔습니다. (유효한 아이템: ${validItems.length}개)`);
+    return resultItems;
+  } catch (error) {
+    console.error("❌ 전체 뉴스를 불러오는 중 오류 발생:", error);
+    return [];
+  } finally {
+    isLoadingNews = false;
+  }
 }
 
-console.log("📚 News 모듈이 로드되었습니다. TTL 기반 캐시가 활성화되었습니다.");
+console.log("📚 News 모듈이 로드되었습니다. 실시간 뉴스 가져오기 모드입니다.");
 
 module.exports = {
-  getNewsFromCache,
-  isCacheReady: () => newsCache.items.length > 0 && newsCache.initialized,
+  fetchLatestNews,
+  fetchAllNews,
+  isLoadingNews: () => isLoadingNews,
 };
