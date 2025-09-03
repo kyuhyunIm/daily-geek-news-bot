@@ -1,7 +1,7 @@
 require("dotenv").config();
 const {App} = require("@slack/bolt");
 const http = require("http");
-const {fetchLatestNews, fetchAllNews, isLoadingNews} = require("./modules/news");
+const {fetchAllNews, isLoadingNews} = require("./modules/news");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -93,7 +93,11 @@ function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
   const actions = [];
   if (sessionId) {
     const session = newsSessions.get(sessionId);
-    if (session && newsItems.length > 0 && currentOffset + newsItems.length < session.items.length) {
+    if (
+      session &&
+      newsItems.length > 0 &&
+      currentOffset + newsItems.length < session.items.length
+    ) {
       actions.push({
         type: "button",
         text: {type: "plain_text", text: "더 이전 뉴스 보기 ➡️", emoji: true},
@@ -138,7 +142,7 @@ app.command("/뉴스", async ({ack, respond}) => {
 
     // 전체 뉴스를 가져와서 세션에 저장
     const allNews = await fetchAllNews();
-    
+
     if (allNews.length === 0) {
       await respond({
         response_type: "ephemeral",
@@ -148,10 +152,12 @@ app.command("/뉴스", async ({ack, respond}) => {
     }
 
     // 새로운 세션 생성
-    const sessionId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `news_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
     newsSessions.set(sessionId, {
       items: allNews,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     const newsItems = allNews.slice(0, 5);
@@ -204,14 +210,16 @@ app.event("app_mention", async ({event, client}) => {
       } else {
         // 전체 뉴스를 가져와서 세션에 저장
         const allNews = await fetchAllNews();
-        
+
         if (allNews.length > 0) {
-          const sessionId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const sessionId = `news_${Date.now()}_${Math.random()
+            .toString(36)
+            .substr(2, 9)}`;
           newsSessions.set(sessionId, {
             items: allNews,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
-          
+
           const newsItems = allNews.slice(0, 5);
           responseText = "📰 최신 기술 뉴스를 가져왔습니다!";
           responseBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
@@ -296,6 +304,8 @@ app.event("app_mention", async ({event, client}) => {
       channel: event.channel,
       text: responseText,
       blocks: responseBlocks,
+      unfurl_links: false,
+      unfurl_media: false,
     });
 
     const duration = Date.now() - startTime;
@@ -312,6 +322,8 @@ app.event("app_mention", async ({event, client}) => {
         token: process.env.SLACK_BOT_TOKEN,
         channel: event.channel,
         text: "😭 죄송합니다. 요청을 처리하는 중 오류가 발생했습니다.",
+        unfurl_links: false,
+        unfurl_media: false,
       });
     } catch (fallbackError) {
       console.error(`❌ 폴백 메시지 전송 실패:`, fallbackError);
@@ -323,32 +335,36 @@ app.action("load_older_news", async ({action, ack, respond}) => {
   await ack();
 
   console.log(`🔧 [load_older_news] 버튼 클릭됨, value: ${action.value}`);
-  
+
   try {
     // value 형식: sessionId_offset
-    const parts = action.value.split('_');
+    const parts = action.value.split("_");
     const offset = parseInt(parts[parts.length - 1], 10);
-    const sessionId = parts.slice(0, -1).join('_');
-    
+    const sessionId = parts.slice(0, -1).join("_");
+
     // 세션 가져오기
     let session = newsSessions.get(sessionId);
-    
+
     // 세션이 없으면 다시 로드
     if (!session) {
       const allNews = await fetchAllNews();
-      const newSessionId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newSessionId = `news_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       session = {
         items: allNews,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
       newsSessions.set(newSessionId, session);
-      
+
       const newsItems = allNews.slice(offset, offset + 5);
       const newBlocks = formatNewsToBlocks(newsItems, offset, newSessionId);
-      
+
       await respond({
         replace_original: true,
-        text: `이전 테크 뉴스입니다! (${offset + 1}-${offset + newsItems.length})`,
+        text: `이전 테크 뉴스입니다! (${offset + 1}-${
+          offset + newsItems.length
+        })`,
         blocks: newBlocks,
       });
     } else {
@@ -366,7 +382,9 @@ app.action("load_older_news", async ({action, ack, respond}) => {
 
       await respond({
         replace_original: true,
-        text: `이전 테크 뉴스입니다! (${offset + 1}-${offset + newsItems.length})`,
+        text: `이전 테크 뉴스입니다! (${offset + 1}-${
+          offset + newsItems.length
+        })`,
         blocks: newBlocks,
       });
     }
@@ -394,25 +412,27 @@ app.action("load_first_news", async ({action, ack, respond}) => {
 
   try {
     // value 형식: sessionId_0
-    const parts = action.value.split('_');
-    const sessionId = parts.slice(0, -1).join('_');
-    
+    const parts = action.value.split("_");
+    const sessionId = parts.slice(0, -1).join("_");
+
     // 세션 가져오기
     let session = newsSessions.get(sessionId);
-    
+
     // 세션이 없으면 다시 로드
     if (!session) {
       const allNews = await fetchAllNews();
-      const newSessionId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newSessionId = `news_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       session = {
         items: allNews,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
       newsSessions.set(newSessionId, session);
-      
+
       const newsItems = allNews.slice(0, 5);
       const newBlocks = formatNewsToBlocks(newsItems, offset, newSessionId);
-      
+
       await respond({
         replace_original: true,
         text: "최신 테크 뉴스입니다!",
@@ -454,11 +474,13 @@ app.action("load_first_news", async ({action, ack, respond}) => {
 });
 
 app.action("show_latest_news", async ({action, ack, respond}) => {
+  console.log(`🔧 [show_latest_news] 버튼 클릭됨, value: ${action.value}`);
+
   await ack();
 
   try {
     const allNews = await fetchAllNews();
-    
+
     if (allNews.length === 0) {
       await respond({
         response_type: "ephemeral",
@@ -467,10 +489,12 @@ app.action("show_latest_news", async ({action, ack, respond}) => {
       return;
     }
 
-    const sessionId = `news_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `news_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
     newsSessions.set(sessionId, {
       items: allNews,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     const newsItems = allNews.slice(0, 5);
@@ -494,21 +518,13 @@ app.action("show_latest_news", async ({action, ack, respond}) => {
 const server = http.createServer(async (req, res) => {
   if (
     req.method === "POST" &&
-    req.headers.host && 
+    req.headers.host &&
     req.headers.host.includes("daily-geek-news-bot")
   ) {
     console.log("🚀 Cloud Scheduler로부터 데일리 뉴스 전송 요청을 받았습니다.");
 
     try {
-      // 오늘 날짜의 뉴스만 가져오기
-      let newsItems = await fetchLatestNews();
-      let isToday = true;
-      
-      if (newsItems.length === 0) {
-        console.log("📭 오늘자 뉴스가 없습니다. 전체 뉴스에서 최신 5개를 가져옵니다.");
-        newsItems = await fetchAllNews(5);
-        isToday = false;
-      }
+      let newsItems = await fetchAllNews(5);
 
       if (newsItems.length === 0) {
         console.log("⚠️ 표시할 뉴스가 없습니다.");
@@ -536,14 +552,14 @@ const server = http.createServer(async (req, res) => {
         {type: "divider"},
       ];
 
-      // 최대 5개만 표시
-      const displayItems = newsItems.slice(0, 5);
-      displayItems.forEach((item) => {
+      newsItems.forEach((item) => {
         simpleBlocks.push(formatNewsItem(item));
       });
 
-      const countText = isToday ? `오늘 뉴스: ${newsItems.length}개` : `최신 뉴스: ${displayItems.length}개`;
-      
+      const countText = isToday
+        ? `오늘 뉴스: ${newsItems.length}개`
+        : `최신 뉴스: ${displayItems.length}개`;
+
       simpleBlocks.push(
         {type: "divider"},
         {
@@ -562,6 +578,8 @@ const server = http.createServer(async (req, res) => {
         channel: process.env.SLACK_TARGET_CHANNEL,
         text: "오늘의 데일리 테크 뉴스입니다!",
         blocks: simpleBlocks,
+        unfurl_links: false,
+        unfurl_media: false,
       });
 
       res.writeHead(200, {"Content-Type": "application/json"});
@@ -571,7 +589,9 @@ const server = http.createServer(async (req, res) => {
           message: `뉴스가 성공적으로 전송되었습니다. (${displayItems.length}개)`,
         })
       );
-      console.log(`✅ 뉴스가 성공적으로 전송되었습니다. (${displayItems.length}개)`);
+      console.log(
+        `✅ 뉴스가 성공적으로 전송되었습니다. (${displayItems.length}개)`
+      );
     } catch (error) {
       console.error("❌ 뉴스 전송 중 오류가 발생했습니다:", error);
       res.writeHead(500, {"Content-Type": "application/json"});

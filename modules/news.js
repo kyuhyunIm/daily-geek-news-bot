@@ -23,7 +23,7 @@ async function parseRSSWithRetry(feed, maxRetries = 3) {
         `✅ [${feed.name}] RSS 피드 파싱 완료 (${duration}ms, ${parsedFeed.items.length}개 아이템, 시도: ${attempt}/${maxRetries})`
       );
 
-      return parsedFeed.items.map((item) => ({ ...item, source: feed.name }));
+      return parsedFeed.items.map((item) => ({...item, source: feed.name}));
     } catch (error) {
       const duration = Date.now() - startTime;
       const isLastAttempt = attempt === maxRetries;
@@ -70,7 +70,7 @@ async function parseRSSWithRetry(feed, maxRetries = 3) {
 }
 
 const RSS_FEEDS = [
-  { name: "GeekNewsFeed", url: "https://news.hada.io/rss/news" },
+  {name: "GeekNewsFeed", url: "https://news.hada.io/rss/news"},
   {
     name: "LineTechNews",
     url: "https://techblog.lycorp.co.jp/ko/feed/index.xml",
@@ -79,64 +79,11 @@ const RSS_FEEDS = [
     name: "CoupangNewsFeed",
     url: "https://medium.com/feed/coupang-engineering",
   },
-  { name: "Toss Tech", url: "https://toss.tech/rss.xml" },
-  { name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn" },
+  {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
+  {name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn"},
 ];
 
 let isLoadingNews = false;
-
-async function fetchLatestNews() {
-  if (isLoadingNews) {
-    console.log("🔄 이미 뉴스를 불러오는 중입니다.");
-    return [];
-  }
-
-  console.log("🚀 최신 뉴스를 불러옵니다...");
-  isLoadingNews = true;
-
-  try {
-    const promises = RSS_FEEDS.map((feed) => parseRSSWithRetry(feed));
-    const results = await Promise.all(promises);
-    const allItems = results.flat();
-
-    // 오늘 날짜 필터링 (시간대 고려)
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    
-    const todayItems = allItems.filter(item => {
-      if (!item.isoDate && !item.pubDate) return false;
-      
-      try {
-        const itemDate = new Date(item.isoDate || item.pubDate);
-        // 유효한 날짜인지 확인
-        if (isNaN(itemDate.getTime())) return false;
-        
-        return itemDate >= todayStart && itemDate <= todayEnd;
-      } catch (error) {
-        console.warn(`⚠️ 날짜 파싱 실패: ${item.isoDate || item.pubDate}`);
-        return false;
-      }
-    });
-
-    // 날짜순 정렬 (최신순)
-    todayItems.sort(
-      (a, b) =>
-        new Date(b.isoDate || b.pubDate) - new Date(a.isoDate || a.pubDate)
-    );
-
-    console.log(
-      `✅ 오늘의 뉴스 ${todayItems.length}개를 불러왔습니다. (전체: ${allItems.length}개)`
-    );
-
-    return todayItems;
-  } catch (error) {
-    console.error("❌ 오늘의 뉴스를 불러오는 중 오류 발생:", error);
-    return [];
-  } finally {
-    isLoadingNews = false;
-  }
-}
 
 async function fetchAllNews(limit = null) {
   if (isLoadingNews) {
@@ -153,7 +100,7 @@ async function fetchAllNews(limit = null) {
     const allItems = results.flat();
 
     // 유효한 날짜를 가진 아이템만 필터링
-    const validItems = allItems.filter(item => {
+    const validItems = allItems.filter((item) => {
       if (!item.isoDate && !item.pubDate) return false;
       const date = new Date(item.isoDate || item.pubDate);
       return !isNaN(date.getTime());
@@ -166,8 +113,10 @@ async function fetchAllNews(limit = null) {
     );
 
     const resultItems = limit ? validItems.slice(0, limit) : validItems;
-    
-    console.log(`✅ 전체 뉴스 ${resultItems.length}개를 불러왔습니다. (유효한 아이템: ${validItems.length}개)`);
+
+    console.log(
+      `✅ 전체 뉴스 ${resultItems.length}개를 불러왔습니다. (유효한 아이템: ${validItems.length}개)`
+    );
     return resultItems;
   } catch (error) {
     console.error("❌ 전체 뉴스를 불러오는 중 오류 발생:", error);
@@ -180,7 +129,6 @@ async function fetchAllNews(limit = null) {
 console.log("📚 News 모듈이 로드되었습니다. 실시간 뉴스 가져오기 모드입니다.");
 
 module.exports = {
-  fetchLatestNews,
   fetchAllNews,
   isLoadingNews: () => isLoadingNews,
 };
