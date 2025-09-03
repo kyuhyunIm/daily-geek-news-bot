@@ -10,10 +10,10 @@ const parser = new Parser({
   },
 });
 
-// Axios 인스턴스 생성
+// Axios 인스턴스 생성 (Cloud Run 최적화)
 const httpClient = axios.create({
-  timeout: 30000, // 30초 타임아웃
-  maxRedirects: 5,
+  timeout: 12000, // 12초 타임아웃 (빠른 응답 우선)
+  maxRedirects: 3,
   headers: {
     "User-Agent": "Mozilla/5.0 (compatible; daily-geek-news-bot/2.0; +https://daily-geek-news-bot.com)",
     Accept: "application/rss+xml, application/xml, text/xml, */*",
@@ -186,17 +186,17 @@ const RSS_FEEDS = [
   {name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn"},
 ];
 
-// 병렬 처리 with 개선된 타임아웃
+// 병렬 처리 with 빠른 타임아웃 (Cloud Run 최적화)
 async function fetchWithFastFail(feeds, itemsPerFeed) {
-  // Promise.allSettled로 모든 피드 시도 (개별 타임아웃 35초)
+  // Promise.allSettled로 모든 피드 시도 (개별 타임아웃 15초)
   const promises = feeds.map((feed) =>
     Promise.race([
       parseRSSFeedSafe(feed, itemsPerFeed),
       new Promise(
         (resolve) => setTimeout(() => {
-          console.warn(`⏰ [${feed.name}] 개별 타임아웃 (35초)`);
+          console.warn(`⏰ [${feed.name}] 개별 타임아웃 (15초)`);
           resolve([]);
-        }, 35000) // 35초 개별 타임아웃
+        }, 15000) // 15초 개별 타임아웃 (Cloud Run 친화적)
       ),
     ])
   );
@@ -218,7 +218,14 @@ async function fetchAllNewsCloudRun(limit = null) {
   const startTime = Date.now();
 
   try {
-    // 1. 캐시 확인 (인스턴스가 살아있는 경우)
+    // 1. 로딩 상태 우선 확인 (캐시 확인 전에)
+    if (isCurrentlyLoading) {
+      const loadingTime = Math.floor((Date.now() - loadingStartTime) / 1000);
+      console.log(`⏳ 이미 로딩 중 (${loadingTime}초 경과)`);
+      return [];
+    }
+
+    // 2. 캐시 확인 (인스턴스가 살아있는 경우)
     const cachedItems = cache.getAll();
     if (cachedItems.length > 0) {
       console.log(`⚡ 캐시 히트! ${cachedItems.length}개 아이템`);
@@ -238,13 +245,7 @@ async function fetchAllNewsCloudRun(limit = null) {
       return limit ? sortedItems.slice(0, limit) : sortedItems;
     }
 
-    // 2. 캐시 미스 - 새로 가져오기
-    if (isCurrentlyLoading) {
-      const loadingTime = Math.floor((Date.now() - loadingStartTime) / 1000);
-      console.log(`⏳ 이미 로딩 중 (${loadingTime}초 경과)`);
-      return [];
-    }
-
+    // 3. 캐시 미스 - 새로 가져오기 (로딩 상태 설정)
     isCurrentlyLoading = true;
     loadingStartTime = Date.now();
     console.log("🔄 캐시 미스, RSS 피드 파싱 시작...");

@@ -186,8 +186,6 @@ app.command("/뉴스", async ({ack, respond}) => {
       await respond({
         response_type: "ephemeral",
         text: `⏳ 뉴스를 불러오는 중입니다... (경과 시간: ${status.loadingTime}초)\n잠시만 기다려주세요. ☀️`,
-        unfurl_links: false,
-        unfurl_media: false,
       });
       return;
     }
