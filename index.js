@@ -556,7 +556,7 @@ const server = http.createServer(async (req, res) => {
         simpleBlocks.push(formatNewsItem(item));
       });
 
-      const countText = `최신 뉴스: ${displayItems.length}개`;
+      const countText = `최신 뉴스: ${newsItems.length}개`;
 
       simpleBlocks.push(
         {type: "divider"},
@@ -584,11 +584,11 @@ const server = http.createServer(async (req, res) => {
       res.end(
         JSON.stringify({
           success: true,
-          message: `뉴스가 성공적으로 전송되었습니다. (${displayItems.length}개)`,
+          message: `뉴스가 성공적으로 전송되었습니다. (${newsItems.length}개)`,
         })
       );
       console.log(
-        `✅ 뉴스가 성공적으로 전송되었습니다. (${displayItems.length}개)`
+        `✅ 뉴스가 성공적으로 전송되었습니다. (${newsItems.length}개)`
       );
     } catch (error) {
       console.error("❌ 뉴스 전송 중 오류가 발생했습니다:", error);
