@@ -92,9 +92,11 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
     let xmlData;
     let lastError;
     
-    // 최대 3번 시도
+    // 최대 3번 시도 (각 시도마다 확실한 완료 대기)
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        console.log(`🔄 [${feed.name}] 시도 ${attempt}/3 (XML 다운로드 시작)`);
+        
         const response = await httpClient.get(feed.url, {
           responseType: 'text', // XML을 text로 받음
         });
@@ -109,10 +111,14 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
         
       } catch (err) {
         lastError = err;
+        const errorMsg = err.code === 'ECONNABORTED' ? '타임아웃' : err.message;
+        
         if (attempt < 3) {
           const waitTime = attempt * 1000; // 점진적 백오프 (1초, 2초)
-          console.warn(`⚠️ [${feed.name}] 시도 ${attempt} 실패, ${waitTime}ms 후 재시도... (${err.message})`);
+          console.warn(`⚠️ [${feed.name}] 시도 ${attempt} 실패 (${errorMsg}), ${waitTime}ms 후 재시도...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
+        } else {
+          console.error(`❌ [${feed.name}] 모든 시도 실패 (${errorMsg})`);
         }
       }
     }
@@ -186,31 +192,30 @@ const RSS_FEEDS = [
   {name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn"},
 ];
 
-// 병렬 처리 with 빠른 타임아웃 (Cloud Run 최적화)
+// 병렬 처리 - 모든 피드 완료까지 대기 (개별 타임아웃 제거)
 async function fetchWithFastFail(feeds, itemsPerFeed) {
-  // Promise.allSettled로 모든 피드 시도 (개별 타임아웃 15초)
-  const promises = feeds.map((feed) =>
-    Promise.race([
-      parseRSSFeedSafe(feed, itemsPerFeed),
-      new Promise(
-        (resolve) => setTimeout(() => {
-          console.warn(`⏰ [${feed.name}] 개별 타임아웃 (15초)`);
-          resolve([]);
-        }, 15000) // 15초 개별 타임아웃 (Cloud Run 친화적)
-      ),
-    ])
-  );
-
+  console.log(`🔄 ${feeds.length}개 피드 병렬 파싱 시작 (개별 완료까지 대기)`);
+  
+  // Promise.allSettled로 모든 피드가 완전히 완료될 때까지 대기
+  const promises = feeds.map((feed) => parseRSSFeedSafe(feed, itemsPerFeed));
   const results = await Promise.allSettled(promises);
 
-  return results.map((result, index) => {
+  let successCount = 0;
+  let totalItems = 0;
+
+  const processedResults = results.map((result, index) => {
     if (result.status === "fulfilled") {
+      successCount++;
+      totalItems += result.value.length;
       return result.value;
     } else {
       console.error(`❌ [${feeds[index].name}] Promise 처리 실패: ${result.reason}`);
       return [];
     }
   });
+
+  console.log(`📊 피드 파싱 완료: ${successCount}/${feeds.length} 성공, 총 ${totalItems}개 아이템`);
+  return processedResults;
 }
 
 // Cloud Run 최적화된 뉴스 가져오기

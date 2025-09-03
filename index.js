@@ -181,6 +181,7 @@ app.command("/뉴스", async ({ack, respond}) => {
     const cacheStatus = getCacheStatus();
     console.log(`📊 캐시 상태: ${JSON.stringify(cacheStatus)}`);
 
+    // 이미 로딩 중인 경우 로딩 메시지 표시
     if (isLoadingNews()) {
       const status = getCacheStatus();
       await respond({
@@ -190,7 +191,58 @@ app.command("/뉴스", async ({ack, respond}) => {
       return;
     }
 
-    // 전체 뉴스를 가져와서 세션에 저장
+    // 캐시가 비어있고 로딩이 필요한 경우 즉시 로딩 메시지 표시
+    if (cacheStatus.totalCached === 0) {
+      console.log(`⚡ 캐시 없음 - 즉시 로딩 메시지 표시 후 RSS 파싱 시작`);
+      
+      await respond({
+        response_type: "ephemeral", 
+        text: `⏳ 뉴스를 불러오는 중입니다...\n처음 로딩이라 시간이 조금 걸릴 수 있습니다. 잠시만 기다려주세요 ☀️`,
+      });
+
+      // 비동기로 RSS 파싱 시작하고 완료되면 새로운 메시지 전송
+      fetchAllNews().then(async (allNews) => {
+        if (allNews.length === 0) {
+          await respond({
+            response_type: "ephemeral",
+            text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
+          });
+          return;
+        }
+
+        // 새로운 세션 생성
+        const sessionId = `news_${Date.now()}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`;
+        newsSessions.set(sessionId, {
+          items: allNews,
+          timestamp: Date.now(),
+        });
+
+        const newsItems = allNews.slice(0, 5);
+        const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
+
+        const duration = Date.now() - startTime;
+        console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
+
+        await respond({
+          response_type: "in_channel",
+          text: "✅ 최신 테크 뉴스를 불러왔습니다!",
+          blocks: messageBlocks,
+        });
+      }).catch(async (error) => {
+        const duration = Date.now() - startTime;
+        console.error(`❌ /뉴스 백그라운드 처리 중 오류 발생 (처리시간: ${duration}ms):`, error);
+        await respond({
+          response_type: "ephemeral",
+          text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
+        });
+      });
+
+      return; // 백그라운드 처리로 전환했으므로 여기서 종료
+    }
+
+    // 캐시가 있는 경우 일반 처리
     const allNews = await fetchAllNews();
 
     if (allNews.length === 0) {
@@ -248,6 +300,9 @@ app.event("app_mention", async ({event, client}) => {
     let responseText;
 
     if (mentionText.includes("뉴스") || mentionText.includes("news")) {
+      // 캐시 상태 확인
+      const cacheStatus = getCacheStatus();
+      
       if (isLoadingNews()) {
         const status = getCacheStatus();
         responseText = `⏳ 뉴스 데이터를 불러오는 중입니다... (경과 시간: ${status.loadingTime}초)\n잠시만 기다려주세요. ☀️`;
@@ -257,8 +312,62 @@ app.event("app_mention", async ({event, client}) => {
             text: {type: "mrkdwn", text: responseText},
           },
         ];
+      } else if (cacheStatus.totalCached === 0) {
+        // 캐시가 비어있는 경우 즉시 로딩 메시지 표시
+        console.log(`⚡ 멘션: 캐시 없음 - 즉시 로딩 메시지 표시 후 RSS 파싱 시작`);
+        
+        responseText = `⏳ 뉴스를 불러오는 중입니다...\n처음 로딩이라 시간이 조금 걸릴 수 있습니다. 잠시만 기다려주세요 ☀️`;
+        responseBlocks = [
+          {
+            type: "section",
+            text: {type: "mrkdwn", text: responseText},
+          },
+        ];
+
+        // 백그라운드에서 RSS 파싱 후 새로운 메시지 전송
+        fetchAllNews().then(async (allNews) => {
+          if (allNews.length > 0) {
+            const sessionId = `news_${Date.now()}_${Math.random()
+              .toString(36)
+              .substr(2, 9)}`;
+            newsSessions.set(sessionId, {
+              items: allNews,
+              timestamp: Date.now(),
+            });
+
+            const newsItems = allNews.slice(0, 5);
+            const newBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
+
+            await client.chat.postMessage({
+              token: process.env.SLACK_BOT_TOKEN,
+              channel: event.channel,
+              text: "✅ 최신 기술 뉴스를 불러왔습니다!",
+              blocks: newBlocks,
+              unfurl_links: false,
+              unfurl_media: false,
+            });
+          } else {
+            await client.chat.postMessage({
+              token: process.env.SLACK_BOT_TOKEN,
+              channel: event.channel,
+              text: "😭 현재 불러올 뉴스가 없습니다.",
+              unfurl_links: false,
+              unfurl_media: false,
+            });
+          }
+        }).catch(async (error) => {
+          console.error(`❌ 멘션 백그라운드 처리 중 오류:`, error);
+          await client.chat.postMessage({
+            token: process.env.SLACK_BOT_TOKEN,
+            channel: event.channel,
+            text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
+            unfurl_links: false,
+            unfurl_media: false,
+          });
+        });
+        
       } else {
-        // 전체 뉴스를 가져와서 세션에 저장
+        // 캐시가 있는 경우 일반 처리
         const allNews = await fetchAllNews();
 
         if (allNews.length > 0) {
