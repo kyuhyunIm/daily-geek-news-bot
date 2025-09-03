@@ -556,9 +556,7 @@ const server = http.createServer(async (req, res) => {
         simpleBlocks.push(formatNewsItem(item));
       });
 
-      const countText = isToday
-        ? `오늘 뉴스: ${newsItems.length}개`
-        : `최신 뉴스: ${displayItems.length}개`;
+      const countText = `최신 뉴스: ${displayItems.length}개`;
 
       simpleBlocks.push(
         {type: "divider"},
