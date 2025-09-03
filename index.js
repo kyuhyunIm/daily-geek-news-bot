@@ -1,7 +1,11 @@
 require("dotenv").config();
 const {App} = require("@slack/bolt");
 const http = require("http");
-const {fetchAllNews, isLoadingNews} = require("./modules/news");
+const {
+  fetchAllNews,
+  isLoadingNews,
+  getCacheStatus,
+} = require("./modules/newsCache");
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -126,16 +130,64 @@ function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
   return blocks;
 }
 
+// 캐시 상태 확인 커맨드
+app.command("/캐시상태", async ({ack, respond}) => {
+  await ack();
+
+  const status = getCacheStatus();
+  const feedList = Object.entries(status.feeds || {})
+    .map(([name, count]) => `  • ${name}: ${count}개`)
+    .join("\n");
+
+  const loadingStatus = status.isLoading
+    ? `• 현재 상태: 로딩 중 ⏳ (${status.loadingTime}초 경과)`
+    : `• 현재 상태: 대기 중 ✅`;
+
+  await respond({
+    response_type: "ephemeral",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*📊 Cloud Run 캐시 상태*\n\n` +
+            `• 총 캐시 아이템: ${status.totalCached}개\n` +
+            `• 캐시 연령: ${status.cacheAge}초\n` +
+            `${loadingStatus}\n\n` +
+            `*피드별 상태:*\n${feedList || "  (캐시 비어있음)"}`,
+        },
+      },
+      {
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "☁️ Cloud Run 환경 - 인스턴스 유지 시간 동안만 캐시 유효",
+          },
+        ],
+      },
+    ],
+  });
+});
+
 app.command("/뉴스", async ({ack, respond}) => {
   const startTime = Date.now();
 
   await ack();
 
   try {
+    // 캐시 상태 확인 (디버깅용)
+    const cacheStatus = getCacheStatus();
+    console.log(`📊 캐시 상태: ${JSON.stringify(cacheStatus)}`);
+
     if (isLoadingNews()) {
+      const status = getCacheStatus();
       await respond({
         response_type: "ephemeral",
-        text: "⏳ 뉴스를 불러오는 중입니다... 잠시만 기다려주세요.",
+        text: `⏳ 뉴스를 불러오는 중입니다... (경과 시간: ${status.loadingTime}초)\n잠시만 기다려주세요. ☀️`,
+        unfurl_links: false,
+        unfurl_media: false,
       });
       return;
     }
@@ -199,8 +251,8 @@ app.event("app_mention", async ({event, client}) => {
 
     if (mentionText.includes("뉴스") || mentionText.includes("news")) {
       if (isLoadingNews()) {
-        responseText =
-          "⏳ 뉴스 데이터를 불러오는 중입니다... 잠시만 기다려주세요.";
+        const status = getCacheStatus();
+        responseText = `⏳ 뉴스 데이터를 불러오는 중입니다... (경과 시간: ${status.loadingTime}초)\n잠시만 기다려주세요. ☀️`;
         responseBlocks = [
           {
             type: "section",
@@ -617,6 +669,7 @@ async function startApp() {
 
     await new Promise((resolve) => setTimeout(resolve, 2000));
     console.log("🔗 Socket Mode 연결이 안정화되었습니다.");
+    console.log("☁️ Cloud Run 환경에서 실행 중 - 온디맨드 캐싱 활성화");
 
     const port = process.env.PORT || 8080;
     server.listen(port, () => {
