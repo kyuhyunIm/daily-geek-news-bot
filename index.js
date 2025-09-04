@@ -881,7 +881,6 @@ app.action("load_more_extended", async ({action, ack, respond}) => {
       headerText: `📰 다음 테크 뉴스입니다! (${offset + 1}-${
         offset + newsItems.length
       }/${session.items.length})`,
-      showLoadMore: isExtendedMode,
       totalItems: session.items.length,
     });
 
