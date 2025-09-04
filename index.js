@@ -98,89 +98,89 @@ function getSession(sessionId) {
  * @returns {string} 정리된 제목
  */
 function cleanNewsTitle(title) {
-  if (!title || typeof title !== 'string') {
-    return 'No title';
+  if (!title || typeof title !== "string") {
+    return "No title";
   }
 
   let cleanTitle = title.trim();
 
   // 1. 기본 정리 - 탭, 줄바꿈, 연속 공백 제거
   cleanTitle = cleanTitle
-    .replace(/[\t\n\r]/g, ' ') // 탭과 줄바꿈을 공백으로 변환
-    .replace(/\s+/g, ' ') // 연속된 공백을 단일 공백으로
+    .replace(/[\t\n\r]/g, " ") // 탭과 줄바꿈을 공백으로 변환
+    .replace(/\s+/g, " ") // 연속된 공백을 단일 공백으로
     .trim(); // 앞뒤 공백 제거
 
   // 2. HTML 태그 완전 제거 (예: <code>, <em>, <strong> 등)
-  cleanTitle = cleanTitle.replace(/<[^>]*>/g, '');
+  cleanTitle = cleanTitle.replace(/<[^>]*>/g, "");
 
   // 3. HTML 엔티티 디코딩
   const htmlEntities = {
-    '&amp;': '&',
-    '&lt;': '<',
-    '&gt;': '>',
-    '&quot;': '"',
-    '&#39;': "'",
-    '&#x27;': "'",
-    '&apos;': "'",
-    '&nbsp;': ' ',
-    '&mdash;': '—',
-    '&ndash;': '–',
-    '&ldquo;': '"',
-    '&rdquo;': '"',
-    '&lsquo;': "'",
-    '&rsquo;': "'",
-    '&hellip;': '...',
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#39;": "'",
+    "&#x27;": "'",
+    "&apos;": "'",
+    "&nbsp;": " ",
+    "&mdash;": "—",
+    "&ndash;": "–",
+    "&ldquo;": '"',
+    "&rdquo;": '"',
+    "&lsquo;": "'",
+    "&rsquo;": "'",
+    "&hellip;": "...",
   };
 
   Object.entries(htmlEntities).forEach(([entity, char]) => {
-    cleanTitle = cleanTitle.replace(new RegExp(entity, 'gi'), char);
+    cleanTitle = cleanTitle.replace(new RegExp(entity, "gi"), char);
   });
 
   // 2. Slack markdown 특수문자 제거/변환
   cleanTitle = cleanTitle
-    .replace(/[<>]/g, '') // < > 완전 제거
-    .replace(/\|/g, '｜') // | → ｜ (전각 문자로 대체)
-    .replace(/\*/g, '✱') // * → ✱ (별표 대체)
-    .replace(/_/g, '') // _ 제거 (단어 사이는 유지)
+    .replace(/[<>]/g, "") // < > 완전 제거
+    .replace(/\|/g, "｜") // | → ｜ (전각 문자로 대체)
+    .replace(/\*/g, "✱") // * → ✱ (별표 대체)
+    .replace(/_/g, "") // _ 제거 (단어 사이는 유지)
     .replace(/`/g, "'") // ` → ' 변환
-    .replace(/~/g, '～') // ~ → ～ (전각 문자로 대체)
-    .replace(/\[/g, '［') // [ → ［
-    .replace(/\]/g, '］') // ] → ］
-    .replace(/#/g, '♯'); // # → ♯
+    .replace(/~/g, "～") // ~ → ～ (전각 문자로 대체)
+    .replace(/\[/g, "［") // [ → ［
+    .replace(/\]/g, "］") // ] → ］
+    .replace(/#/g, "♯"); // # → ♯
 
   // 3. 추가 문제 문자들 정리
   cleanTitle = cleanTitle
-    .replace(/[{}]/g, '') // 중괄호 제거
-    .replace(/[()]/g, match => match === '(' ? '（' : '）') // 소괄호 → 전각 괄호
-    .replace(/[@$%^&+=]/g, '') // 기타 특수문자 제거
-    .replace(/[\\\/]/g, '／') // 슬래시 → 전각 슬래시
+    .replace(/[{}]/g, "") // 중괄호 제거
+    .replace(/[()]/g, (match) => (match === "(" ? "（" : "）")) // 소괄호 → 전각 괄호
+    .replace(/[@$%^&+=]/g, "") // 기타 특수문자 제거
+    .replace(/[\\\/]/g, "／") // 슬래시 → 전각 슬래시
     .replace(/["'"""'']/g, '"') // 다양한 따옴표 → 일반 따옴표로 통일
-    .replace(/[—–−]/g, '-') // 다양한 대시 → 하이픈으로 통일
-    .replace(/[…]/g, '...'); // 줄임표 정규화
+    .replace(/[—–−]/g, "-") // 다양한 대시 → 하이픈으로 통일
+    .replace(/[…]/g, "..."); // 줄임표 정규화
 
   // 4. 연속된 공백과 특수문자 정리
   cleanTitle = cleanTitle
-    .replace(/\s+/g, ' ') // 연속 공백 → 단일 공백
-    .replace(/[-]{2,}/g, '-') // 연속 하이픈 → 단일 하이픈
-    .replace(/[.]{4,}/g, '...') // 4개 이상 점 → 줄임표
-    .replace(/[!]{2,}/g, '!') // 연속 느낌표 → 단일 느낌표
-    .replace(/[?]{2,}/g, '?'); // 연속 물음표 → 단일 물음표
+    .replace(/\s+/g, " ") // 연속 공백 → 단일 공백
+    .replace(/[-]{2,}/g, "-") // 연속 하이픈 → 단일 하이픈
+    .replace(/[.]{4,}/g, "...") // 4개 이상 점 → 줄임표
+    .replace(/[!]{2,}/g, "!") // 연속 느낌표 → 단일 느낌표
+    .replace(/[?]{2,}/g, "?"); // 연속 물음표 → 단일 물음표
 
   // 5. 앞뒤 공백 및 특수문자 정리
   cleanTitle = cleanTitle
-    .replace(/^[-.,!?:;]+/, '') // 시작 부분 특수문자 제거
-    .replace(/[-.,!?:;]+$/, '') // 끝 부분 특수문자 제거 (마지막 마침표는 유지)
-    .replace(/[.!?]$/, match => match) // 마지막 문장 부호 복원
+    .replace(/^[-.,!?:;]+/, "") // 시작 부분 특수문자 제거
+    .replace(/[-.,!?:;]+$/, "") // 끝 부분 특수문자 제거 (마지막 마침표는 유지)
+    .replace(/[.!?]$/, (match) => match) // 마지막 문장 부호 복원
     .trim();
 
   // 6. 최종 검증 및 길이 제한
   if (cleanTitle.length === 0) {
-    return 'No title';
+    return "No title";
   }
 
   // 너무 긴 제목은 적절히 자르기 (Slack 제한 고려)
   if (cleanTitle.length > 150) {
-    cleanTitle = cleanTitle.substring(0, 147) + '...';
+    cleanTitle = cleanTitle.substring(0, 147) + "...";
   }
 
   return cleanTitle;
@@ -226,7 +226,6 @@ function createNewsBlocks(options) {
     offset = 0,
     sessionId = null,
     headerText = null,
-    showLoadMore = false,
     totalItems = null,
     keyword = null,
   } = options;
@@ -283,20 +282,25 @@ function createNewsBlocks(options) {
           type: "button",
           text: {
             type: "plain_text",
-            text: showLoadMore ? "다음 10개 ➡️" : "더 이전 뉴스 보기 ➡️",
+            text: "더 이전 뉴스 보기 ➡️",
             emoji: true,
           },
-          value: `${sessionId}_${offset + (showLoadMore ? 10 : 5)}`,
-          action_id: showLoadMore ? "load_more_extended" : "load_older_news",
+          value: `${sessionId}_${offset + 5}`,
+          action_id: "load_older_news",
         });
       }
 
-      // 이전 버튼 (확장 모드에서만)
-      if (showLoadMore && offset > 0) {
+      // 다음 뉴스 보기 버튼 (더 최신 뉴스로 이동)
+      // 조건: 1. 첫 페이지가 아님 2. offset + items.length >= 10 3. 마지막 페이지
+      const isNotFirstPage = offset > 0;
+      const hasEnoughItems = offset + items.length >= 10;
+      const isLastPage = offset + items.length >= session.items.length;
+      
+      if (isNotFirstPage && hasEnoughItems && isLastPage) {
         actions.push({
           type: "button",
-          text: {type: "plain_text", text: "⬅️ 이전 10개", emoji: true},
-          value: `${sessionId}_${offset - 10}`,
+          text: {type: "plain_text", text: "⬅️ 더 최신 뉴스", emoji: true},
+          value: `${sessionId}_${Math.max(0, offset - 5)}`, // 더 최신으로 (offset 감소)
           action_id: "load_more_extended",
         });
       }
@@ -307,7 +311,7 @@ function createNewsBlocks(options) {
           type: "button",
           text: {type: "plain_text", text: "처음으로 🏠", emoji: true},
           value: `${sessionId}_0`,
-          action_id: showLoadMore ? "load_more_extended" : "load_first_news",
+          action_id: "load_first_news",
         });
       }
     }
@@ -340,7 +344,7 @@ function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
   const session = getSession(sessionId);
   const keyword = session?.keyword || null;
   const totalItems = session?.items?.length || newsItems.length;
-  
+
   return createNewsBlocks({
     items: newsItems,
     offset: currentOffset,
@@ -703,21 +707,6 @@ app.event("app_mention", async ({event, client}) => {
               "`@봇이름 도움말`을 입력하시면 사용법을 안내해드릴게요.",
           },
         },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "🆕 최신 뉴스 보기",
-                emoji: true,
-              },
-              value: "show_latest_news",
-              action_id: "show_latest_news",
-            },
-          ],
-        },
       ];
     }
 
@@ -750,53 +739,6 @@ app.event("app_mention", async ({event, client}) => {
     } catch (fallbackError) {
       console.error(`❌ 폴백 메시지 전송 실패:`, fallbackError);
     }
-  }
-});
-
-app.action("load_more_extended", async ({action, ack, respond}) => {
-  await ack();
-
-  console.log(`🔧 [load_more_extended] 버튼 클릭됨, value: ${action.value}`);
-
-  try {
-    const parts = action.value.split("_");
-    const offset = parseInt(parts[parts.length - 1], 10);
-    const sessionId = parts.slice(0, -1).join("_");
-
-    const session = newsSessions.get(sessionId);
-    if (!session) {
-      await respond({
-        response_type: "ephemeral",
-        text: "😭 세션이 만료되었습니다. 다시 시도해주세요.",
-      });
-      return;
-    }
-
-    const newsItems = session.items.slice(offset, offset + 10);
-    const blocks = createNewsBlocks({
-      items: newsItems,
-      offset,
-      sessionId,
-      headerText: `📰 확장된 뉴스 목록 (${offset + 1}-${
-        offset + newsItems.length
-      }/${session.items.length})`,
-      showLoadMore: true,
-      totalItems: session.items.length,
-    });
-
-    await respond({
-      replace_original: true,
-      text: "확장된 뉴스 목록",
-      blocks: blocks,
-    });
-
-    console.log(`✅ [load_more_extended] 처리 완료 (offset: ${offset})`);
-  } catch (error) {
-    console.error(`❌ [load_more_extended] 처리 중 오류:`, error);
-    await respond({
-      response_type: "ephemeral",
-      text: "😭 오류가 발생했습니다.",
-    });
   }
 });
 
@@ -912,37 +854,53 @@ app.action("load_first_news", async ({action, ack, respond}) => {
   }
 });
 
-app.action("show_latest_news", async ({action, ack, respond}) => {
-  console.log(`🔧 [show_latest_news] 버튼 클릭됨, value: ${action.value}`);
-
+app.action("load_more_extended", async ({action, ack, respond}) => {
   await ack();
 
-  try {
-    const allNews = await fetchAllNews();
+  console.log(`🔧 [load_more_extended] 버튼 클릭됨, value: ${action.value}`);
 
-    if (allNews.length === 0) {
+  try {
+    const parts = action.value.split("_");
+    const offset = parseInt(parts[parts.length - 1], 10);
+    const sessionId = parts.slice(0, -1).join("_");
+
+    const session = newsSessions.get(sessionId);
+    if (!session) {
       await respond({
         response_type: "ephemeral",
-        text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
+        text: "😭 세션이 만료되었습니다. 다시 시도해주세요.",
       });
       return;
     }
 
-    const sessionId = createSession(allNews, "news");
-
-    const newsItems = allNews.slice(0, 5);
-    const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
+    // 확장 모드에서는 10개, 일반 다음 뉴스에서는 5개씩 표시
+    const isExtendedMode = session.type === 'extended' || session.items.length > 100;
+    const itemsPerPage = isExtendedMode ? 10 : 5;
+    const newsItems = session.items.slice(offset, offset + itemsPerPage);
+    
+    const blocks = createNewsBlocks({
+      items: newsItems,
+      offset,
+      sessionId,
+      headerText: isExtendedMode 
+        ? `📰 확장된 뉴스 목록 (${offset + 1}-${offset + newsItems.length}/${session.items.length})`
+        : `📰 기술 뉴스 (${offset + 1}-${offset + newsItems.length}/${session.items.length})`,
+      showLoadMore: isExtendedMode,
+      totalItems: session.items.length,
+    });
 
     await respond({
       replace_original: true,
-      text: "최신 테크 뉴스입니다!",
-      blocks: messageBlocks,
+      text: "확장된 뉴스 목록",
+      blocks: blocks,
     });
+
+    console.log(`✅ [load_more_extended] 처리 완료 (offset: ${offset})`);
   } catch (error) {
-    console.error(`❌ [show_latest_news] 처리 중 오류:`, error);
+    console.error(`❌ [load_more_extended] 처리 중 오류:`, error);
     await respond({
       response_type: "ephemeral",
-      text: "😭 뉴스를 불러오는 중 오류가 발생했습니다.",
+      text: "😭 오류가 발생했습니다.",
     });
   }
 });
