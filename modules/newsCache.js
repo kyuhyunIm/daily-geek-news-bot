@@ -217,12 +217,12 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
 
 // RSS 피드 목록 (안정성 순으로 정렬)
 const RSS_FEEDS = [
-  {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
+  {name: "Engineering at Meta", url: "https://engineering.fb.com/feed/"},
   {name: "Naver D2", url: "https://d2.naver.com/d2.atom"},
   {name: "Hacker News", url: "https://hnrss.org/frontpage"},
   {name: "Dev.to", url: "https://dev.to/feed"},
   {name: "GitHub Blog", url: "https://github.blog/feed/"},
-  {name: "CSS Tricks", url: "https://css-tricks.com/feed/"},
+  {name: "InfoQ", url: "https://www.infoq.com/rss/"},
   {name: "Smashing Magazine", url: "https://www.smashingmagazine.com/feed/"},
   {name: "A List Apart", url: "https://alistapart.com/main/feed/"},
 ];
