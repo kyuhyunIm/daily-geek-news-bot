@@ -293,7 +293,7 @@ function createNewsBlocks(options) {
       // 다음 뉴스 보기 버튼 (더 최신 뉴스로 이동)
       // 조건: 첫 페이지가 아닌 모든 페이지에서 표출 (offset >= 5)
       const isNotFirstPage = offset >= 5; // 첫 페이지(1-5) 제외
-      
+
       if (isNotFirstPage) {
         actions.push({
           type: "button",
@@ -323,7 +323,7 @@ function createNewsBlocks(options) {
   }
 
   // 추가 정보 (확장 모드)
-  if (showLoadMore && totalItems) {
+  if (totalItems) {
     blocks.push({
       type: "context",
       elements: [
@@ -871,18 +871,16 @@ app.action("load_more_extended", async ({action, ack, respond}) => {
       return;
     }
 
-    // 확장 모드에서는 10개, 일반 다음 뉴스에서는 5개씩 표시
-    const isExtendedMode = session.type === 'extended' || session.items.length > 100;
-    const itemsPerPage = isExtendedMode ? 10 : 5;
+    const itemsPerPage = 5;
     const newsItems = session.items.slice(offset, offset + itemsPerPage);
-    
+
     const blocks = createNewsBlocks({
       items: newsItems,
       offset,
       sessionId,
-      headerText: isExtendedMode 
-        ? `📰 확장된 뉴스 목록 (${offset + 1}-${offset + newsItems.length}/${session.items.length})`
-        : `📰 기술 뉴스 (${offset + 1}-${offset + newsItems.length}/${session.items.length})`,
+      headerText: `📰 다음 테크 뉴스입니다! (${offset + 1}-${
+        offset + newsItems.length
+      }/${session.items.length})`,
       showLoadMore: isExtendedMode,
       totalItems: session.items.length,
     });
