@@ -711,21 +711,11 @@ app.action("load_older_news", async ({action, ack, respond}) => {
     // 세션 가져오기
     let session = getSession(sessionId);
 
-    // 세션이 없으면 다시 로드
+    // 세션이 없으면 오류 메시지 표시
     if (!session) {
-      const allNews = await fetchAllNews();
-      const newSessionId = createSession(allNews, "news");
-      session = getSession(newSessionId);
-
-      const newsItems = allNews.slice(offset, offset + 5);
-      const newBlocks = formatNewsToBlocks(newsItems, offset, newSessionId);
-
       await respond({
         replace_original: true,
-        text: `이전 테크 뉴스입니다! (${offset + 1}-${
-          offset + newsItems.length
-        })`,
-        blocks: newBlocks,
+        text: "❌ 세션이 만료되었습니다. 다시 검색하거나 뉴스를 불러와주세요.",
       });
     } else {
       const newsItems = session.items.slice(offset, offset + 5);
@@ -778,19 +768,11 @@ app.action("load_first_news", async ({action, ack, respond}) => {
     // 세션 가져오기
     let session = getSession(sessionId);
 
-    // 세션이 없으면 다시 로드
+    // 세션이 없으면 오류 메시지 표시
     if (!session) {
-      const allNews = await fetchAllNews();
-      const newSessionId = createSession(allNews, "news");
-      session = getSession(newSessionId);
-
-      const newsItems = allNews.slice(0, 5);
-      const newBlocks = formatNewsToBlocks(newsItems, offset, newSessionId);
-
       await respond({
         replace_original: true,
-        text: "최신 테크 뉴스입니다!",
-        blocks: newBlocks,
+        text: "❌ 세션이 만료되었습니다. 다시 검색하거나 뉴스를 불러와주세요.",
       });
     } else {
       const newsItems = session.items.slice(0, 5);
