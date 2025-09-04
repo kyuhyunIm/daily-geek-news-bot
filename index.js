@@ -93,6 +93,100 @@ function getSession(sessionId) {
 }
 
 /**
+ * 뉴스 제목 정리 함수 - 모든 특수문자와 포맷팅 문제 해결
+ * @param {string} title - 원본 제목
+ * @returns {string} 정리된 제목
+ */
+function cleanNewsTitle(title) {
+  if (!title || typeof title !== 'string') {
+    return 'No title';
+  }
+
+  let cleanTitle = title.trim();
+
+  // 1. 기본 정리 - 탭, 줄바꿈, 연속 공백 제거
+  cleanTitle = cleanTitle
+    .replace(/[\t\n\r]/g, ' ') // 탭과 줄바꿈을 공백으로 변환
+    .replace(/\s+/g, ' ') // 연속된 공백을 단일 공백으로
+    .trim(); // 앞뒤 공백 제거
+
+  // 2. HTML 태그 완전 제거 (예: <code>, <em>, <strong> 등)
+  cleanTitle = cleanTitle.replace(/<[^>]*>/g, '');
+
+  // 3. HTML 엔티티 디코딩
+  const htmlEntities = {
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"',
+    '&#39;': "'",
+    '&#x27;': "'",
+    '&apos;': "'",
+    '&nbsp;': ' ',
+    '&mdash;': '—',
+    '&ndash;': '–',
+    '&ldquo;': '"',
+    '&rdquo;': '"',
+    '&lsquo;': "'",
+    '&rsquo;': "'",
+    '&hellip;': '...',
+  };
+
+  Object.entries(htmlEntities).forEach(([entity, char]) => {
+    cleanTitle = cleanTitle.replace(new RegExp(entity, 'gi'), char);
+  });
+
+  // 2. Slack markdown 특수문자 제거/변환
+  cleanTitle = cleanTitle
+    .replace(/[<>]/g, '') // < > 완전 제거
+    .replace(/\|/g, '｜') // | → ｜ (전각 문자로 대체)
+    .replace(/\*/g, '✱') // * → ✱ (별표 대체)
+    .replace(/_/g, '') // _ 제거 (단어 사이는 유지)
+    .replace(/`/g, "'") // ` → ' 변환
+    .replace(/~/g, '～') // ~ → ～ (전각 문자로 대체)
+    .replace(/\[/g, '［') // [ → ［
+    .replace(/\]/g, '］') // ] → ］
+    .replace(/#/g, '♯'); // # → ♯
+
+  // 3. 추가 문제 문자들 정리
+  cleanTitle = cleanTitle
+    .replace(/[{}]/g, '') // 중괄호 제거
+    .replace(/[()]/g, match => match === '(' ? '（' : '）') // 소괄호 → 전각 괄호
+    .replace(/[@$%^&+=]/g, '') // 기타 특수문자 제거
+    .replace(/[\\\/]/g, '／') // 슬래시 → 전각 슬래시
+    .replace(/["'"""'']/g, '"') // 다양한 따옴표 → 일반 따옴표로 통일
+    .replace(/[—–−]/g, '-') // 다양한 대시 → 하이픈으로 통일
+    .replace(/[…]/g, '...'); // 줄임표 정규화
+
+  // 4. 연속된 공백과 특수문자 정리
+  cleanTitle = cleanTitle
+    .replace(/\s+/g, ' ') // 연속 공백 → 단일 공백
+    .replace(/[-]{2,}/g, '-') // 연속 하이픈 → 단일 하이픈
+    .replace(/[.]{4,}/g, '...') // 4개 이상 점 → 줄임표
+    .replace(/[!]{2,}/g, '!') // 연속 느낌표 → 단일 느낌표
+    .replace(/[?]{2,}/g, '?'); // 연속 물음표 → 단일 물음표
+
+  // 5. 앞뒤 공백 및 특수문자 정리
+  cleanTitle = cleanTitle
+    .replace(/^[-.,!?:;]+/, '') // 시작 부분 특수문자 제거
+    .replace(/[-.,!?:;]+$/, '') // 끝 부분 특수문자 제거 (마지막 마침표는 유지)
+    .replace(/[.!?]$/, match => match) // 마지막 문장 부호 복원
+    .trim();
+
+  // 6. 최종 검증 및 길이 제한
+  if (cleanTitle.length === 0) {
+    return 'No title';
+  }
+
+  // 너무 긴 제목은 적절히 자르기 (Slack 제한 고려)
+  if (cleanTitle.length > 150) {
+    cleanTitle = cleanTitle.substring(0, 147) + '...';
+  }
+
+  return cleanTitle;
+}
+
+/**
  * Function that formats news items to Slack-compatible text block
  * @param {Object} item - News item
  * @returns {Object} Formatted block
@@ -102,8 +196,8 @@ function formatNewsItem(item) {
   const date = isoDate || pubDate;
   const formattedDate = new Date(date).toLocaleDateString("ko-KR");
 
-  // 제목에서 Slack markdown 특수문자 처리
-  const cleanTitle = title.trim().replace(/[<>|*_`]/g, '');
+  // 제목 정리 - 모든 가능한 특수문자와 포맷팅 문제 해결
+  const cleanTitle = cleanNewsTitle(title);
 
   return {
     type: "section",

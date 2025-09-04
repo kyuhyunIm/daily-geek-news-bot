@@ -1,6 +1,31 @@
 const Parser = require("rss-parser");
 const axios = require("axios");
 
+// RSS 제목 정리 함수
+function cleanRSSTitle(title) {
+  if (!title || typeof title !== 'string') {
+    return 'No title';
+  }
+
+  return title
+    .replace(/[\t\n\r]/g, ' ') // 탭과 줄바꿈을 공백으로 변환
+    .replace(/\s+/g, ' ') // 연속된 공백을 단일 공백으로
+    .replace(/<[^>]*>/g, '') // HTML 태그 제거
+    .trim(); // 앞뒤 공백 제거
+}
+
+// RSS 링크 정리 함수
+function cleanRSSLink(link) {
+  if (!link || typeof link !== 'string') {
+    return '';
+  }
+
+  return link
+    .replace(/[\t\n\r]/g, '') // 탭과 줄바꿈 제거
+    .replace(/\s+/g, '') // 모든 공백 제거
+    .trim(); // 앞뒤 공백 제거
+}
+
 const parser = new Parser({
   customFields: {
     item: [
@@ -10,21 +35,35 @@ const parser = new Parser({
   },
 });
 
-// Axios 인스턴스 생성 (Cloud Run 최적화)
+// Axios 인스턴스 생성 (Socket hang up 오류 방지 최적화)
 const httpClient = axios.create({
   timeout: 30000, // 30초 타임아웃 (확장된 RSS 소스 대응)
   maxRedirects: 3,
   headers: {
     "User-Agent":
-      "Mozilla/5.0 (compatible; daily-geek-news-bot/2.0; +https://daily-geek-news-bot.com)",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
     Accept: "application/rss+xml, application/xml, text/xml, */*",
-    "Accept-Encoding": "gzip, deflate, br",
-    Connection: "keep-alive",
+    "Accept-Encoding": "gzip, deflate",
+    Connection: "close", // Keep-alive 대신 close 사용 (socket hang up 방지)
     "Cache-Control": "no-cache",
+    "Accept-Language": "en-US,en;q=0.9",
   },
   validateStatus: function (status) {
     return status >= 200 && status < 300; // default
   },
+  // Socket hang up 방지를 위한 추가 설정
+  maxContentLength: 50 * 1024 * 1024, // 50MB 제한
+  maxBodyLength: 50 * 1024 * 1024,
+  // HTTP Agent 설정 (Node.js)
+  httpAgent: new (require('http').Agent)({
+    keepAlive: false, // Keep-Alive 비활성화
+    timeout: 30000,
+  }),
+  httpsAgent: new (require('https').Agent)({
+    keepAlive: false, // Keep-Alive 비활성화
+    timeout: 30000,
+    rejectUnauthorized: false, // SSL 인증서 문제 회피
+  }),
 });
 
 // 간단한 인메모리 캐시 (Cloud Run 인스턴스 생존 시간 동안만 유효)
@@ -116,10 +155,24 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
         break; // 성공하면 루프 종료
       } catch (err) {
         lastError = err;
-        const errorMsg = err.code === "ECONNABORTED" ? "타임아웃" : err.message;
+        
+        // 오류 유형별 메시지 처리
+        let errorMsg = err.message;
+        if (err.code === "ECONNABORTED") {
+          errorMsg = "타임아웃";
+        } else if (err.code === "ECONNRESET" || errorMsg.includes("socket hang up")) {
+          errorMsg = "소켓 연결 끊김 (socket hang up)";
+        } else if (err.code === "ENOTFOUND") {
+          errorMsg = "DNS 해석 실패";
+        } else if (err.code === "ECONNREFUSED") {
+          errorMsg = "연결 거부됨";
+        }
 
         if (attempt < 3) {
-          const waitTime = attempt * 1000; // 점진적 백오프 (1초, 2초)
+          // socket hang up의 경우 더 긴 대기 시간 적용
+          const isSocketError = err.code === "ECONNRESET" || errorMsg.includes("socket hang up");
+          const waitTime = isSocketError ? attempt * 2000 : attempt * 1000; // socket 오류시 2초, 4초 대기
+          
           console.warn(
             `⚠️ [${feed.name}] 시도 ${attempt} 실패 (${errorMsg}), ${waitTime}ms 후 재시도...`
           );
@@ -156,10 +209,10 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
       `🔗 [${feed.name}] 유효한 아이템: ${validItems.length}개 (link 있음)`
     );
 
-    // 필요한 수만큼 가져오기
+    // 필요한 수만큼 가져오기 (제목과 링크 정리 포함)
     const items = validItems.slice(0, itemsPerFeed).map((item) => ({
-      title: item.title || "No title",
-      link: item.link || item.guid || "",
+      title: cleanRSSTitle(item.title) || "No title",
+      link: cleanRSSLink(item.link || item.guid || ""),
       pubDate: item.pubDate || item.isoDate,
       isoDate: item.isoDate || item.pubDate,
       source: feed.name,
