@@ -4,7 +4,6 @@ const http = require("http");
 const {
   fetchAllNews,
   searchNews,
-  loadMoreNews,
   isLoadingNews,
   getCacheStatus,
 } = require("./modules/newsCache");
@@ -67,20 +66,20 @@ function generateSessionId(prefix) {
  * @param {Object} extraData - 추가 데이터
  * @returns {string} 생성된 세션 ID
  */
-function createSession(items, type = 'news', extraData = {}) {
+function createSession(items, type = "news", extraData = {}) {
   const sessionId = generateSessionId(type);
   const sessionData = {
     items,
     timestamp: Date.now(),
-    ...extraData
+    ...extraData,
   };
-  
-  if (type === 'search') {
+
+  if (type === "search") {
     searchSessions.set(sessionId, sessionData);
   } else {
     newsSessions.set(sessionId, sessionData);
   }
-  
+
   return sessionId;
 }
 
@@ -131,9 +130,8 @@ function createNewsBlocks(options) {
     sessionId = null,
     headerText = null,
     showLoadMore = false,
-    showExtendedLoad = false,
     totalItems = null,
-    keyword = null
+    keyword = null,
   } = options;
 
   // 헤더 텍스트 결정
@@ -160,9 +158,12 @@ function createNewsBlocks(options) {
   if (items.length === 0) {
     blocks.push({
       type: "section",
-      text: {type: "mrkdwn", text: keyword ? 
-        `😭 "${keyword}"에 대한 검색 결과가 없습니다.` : 
-        "🔍 더 이상 표시할 뉴스가 없습니다."},
+      text: {
+        type: "mrkdwn",
+        text: keyword
+          ? `😭 "${keyword}"에 대한 검색 결과가 없습니다.`
+          : "🔍 더 이상 표시할 뉴스가 없습니다.",
+      },
     });
   } else {
     items.forEach((item) => {
@@ -174,22 +175,25 @@ function createNewsBlocks(options) {
 
   // 액션 버튼들
   const actions = [];
-  
+
   if (sessionId) {
     const session = getSession(sessionId);
-    
+
     if (session) {
       // 더 보기 버튼 (일반 페이지네이션)
       if (items.length > 0 && offset + items.length < session.items.length) {
         actions.push({
           type: "button",
-          text: {type: "plain_text", text: showLoadMore ? 
-            "다음 10개 ➡️" : "더 이전 뉴스 보기 ➡️", emoji: true},
+          text: {
+            type: "plain_text",
+            text: showLoadMore ? "다음 10개 ➡️" : "더 이전 뉴스 보기 ➡️",
+            emoji: true,
+          },
           value: `${sessionId}_${offset + (showLoadMore ? 10 : 5)}`,
           action_id: showLoadMore ? "load_more_extended" : "load_older_news",
         });
       }
-      
+
       // 이전 버튼 (확장 모드에서만)
       if (showLoadMore && offset > 0) {
         actions.push({
@@ -199,7 +203,7 @@ function createNewsBlocks(options) {
           action_id: "load_more_extended",
         });
       }
-      
+
       // 처음으로 버튼
       if (offset > 0) {
         actions.push({
@@ -211,16 +215,6 @@ function createNewsBlocks(options) {
       }
     }
   }
-  
-  // 확장 로드 버튼 (첫 페이지에서만)
-  if (showExtendedLoad && offset === 0) {
-    actions.push({
-      type: "button",
-      text: {type: "plain_text", text: "📚 더 많은 뉴스 로드 (100개+)", emoji: true},
-      action_id: "load_extended_news",
-      style: "primary"
-    });
-  }
 
   if (actions.length > 0) {
     blocks.push({
@@ -228,7 +222,7 @@ function createNewsBlocks(options) {
       elements: actions,
     });
   }
-  
+
   // 추가 정보 (확장 모드)
   if (showLoadMore && totalItems) {
     blocks.push({
@@ -250,7 +244,6 @@ function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
     items: newsItems,
     offset: currentOffset,
     sessionId,
-    showExtendedLoad: currentOffset === 0 // 첫 페이지에서만 확장 로드 버튼 표시
   });
 }
 
@@ -261,7 +254,7 @@ app.command("/뉴스검색", async ({ack, respond, command}) => {
 
   try {
     const keyword = command.text.trim();
-    
+
     if (!keyword) {
       await respond({
         response_type: "ephemeral",
@@ -284,14 +277,14 @@ app.command("/뉴스검색", async ({ack, respond, command}) => {
     }
 
     // 검색 세션 생성
-    const sessionId = createSession(searchResults, 'search', { keyword });
+    const sessionId = createSession(searchResults, "search", {keyword});
 
     const newsItems = searchResults.slice(0, 5);
     const blocks = createNewsBlocks({
       items: newsItems,
       sessionId,
       keyword,
-      totalItems: searchResults.length
+      totalItems: searchResults.length,
     });
 
     const duration = Date.now() - startTime;
@@ -309,57 +302,6 @@ app.command("/뉴스검색", async ({ack, respond, command}) => {
     await respond({
       response_type: "ephemeral",
       text: "😭 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-    });
-  }
-});
-
-// 확장 뉴스 로드 액션 (버튼 클릭)
-app.action("load_extended_news", async ({action, ack, respond}) => {
-  const startTime = Date.now();
-  await ack();
-
-  try {
-    console.log("📚 확장 뉴스 로드 요청");
-
-    // loadMoreNews 함수 호출 (200개까지 로드)
-    const result = await loadMoreNews(0, 200);
-
-    if (result.items.length === 0) {
-      await respond({
-        response_type: "ephemeral",
-        text: "😭 불러올 뉴스가 없습니다.",
-      });
-      return;
-    }
-
-    // 확장된 세션 생성
-    const sessionId = createSession(result.items, 'extended', { extended: true });
-
-    const newsItems = result.items.slice(0, 10); // 처음 10개 표시
-    const blocks = createNewsBlocks({
-      items: newsItems,
-      offset: 0,
-      sessionId,
-      headerText: `📰 확장된 뉴스 목록 (총 ${result.items.length}개)`,
-      showLoadMore: true,
-      totalItems: result.items.length
-    });
-
-    const duration = Date.now() - startTime;
-    console.log(
-      `✅ 확장 뉴스 로드 완료: ${result.items.length}개 (${duration}ms)`
-    );
-
-    await respond({
-      replace_original: true,
-      text: "확장된 뉴스 목록입니다!",
-      blocks: blocks,
-    });
-  } catch (error) {
-    console.error("❌ 확장 로드 중 오류:", error);
-    await respond({
-      response_type: "ephemeral",
-      text: "😭 뉴스를 불러오는 중 오류가 발생했습니다.",
     });
   }
 });
@@ -428,44 +370,49 @@ app.command("/뉴스", async ({ack, respond}) => {
     // 캐시가 비어있고 로딩이 필요한 경우 즉시 로딩 메시지 표시
     if (cacheStatus.totalCached === 0) {
       console.log(`⚡ 캐시 없음 - 즉시 로딩 메시지 표시 후 RSS 파싱 시작`);
-      
+
       await respond({
-        response_type: "ephemeral", 
+        response_type: "ephemeral",
         text: `⏳ 뉴스를 불러오는 중입니다...\n처음 로딩이라 시간이 조금 걸릴 수 있습니다. 잠시만 기다려주세요 ☀️`,
       });
 
       // 비동기로 RSS 파싱 시작하고 완료되면 새로운 메시지 전송
-      fetchAllNews().then(async (allNews) => {
-        if (allNews.length === 0) {
+      fetchAllNews()
+        .then(async (allNews) => {
+          if (allNews.length === 0) {
+            await respond({
+              response_type: "ephemeral",
+              text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
+            });
+            return;
+          }
+
+          // 새로운 세션 생성
+          const sessionId = createSession(allNews, "news");
+
+          const newsItems = allNews.slice(0, 5);
+          const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
+
+          const duration = Date.now() - startTime;
+          console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
+
+          await respond({
+            response_type: "in_channel",
+            text: "✅ 최신 테크 뉴스를 불러왔습니다!",
+            blocks: messageBlocks,
+          });
+        })
+        .catch(async (error) => {
+          const duration = Date.now() - startTime;
+          console.error(
+            `❌ /뉴스 백그라운드 처리 중 오류 발생 (처리시간: ${duration}ms):`,
+            error
+          );
           await respond({
             response_type: "ephemeral",
-            text: "😭 뉴스를 불러오는 데 실패했습니다. 잠시 후 다시 시도해주세요.",
+            text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
           });
-          return;
-        }
-
-        // 새로운 세션 생성
-        const sessionId = createSession(allNews, 'news');
-
-        const newsItems = allNews.slice(0, 5);
-        const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
-
-        const duration = Date.now() - startTime;
-        console.log(`📊 /뉴스 명령어 처리 완료 (처리시간: ${duration}ms)`);
-
-        await respond({
-          response_type: "in_channel",
-          text: "✅ 최신 테크 뉴스를 불러왔습니다!",
-          blocks: messageBlocks,
         });
-      }).catch(async (error) => {
-        const duration = Date.now() - startTime;
-        console.error(`❌ /뉴스 백그라운드 처리 중 오류 발생 (처리시간: ${duration}ms):`, error);
-        await respond({
-          response_type: "ephemeral",
-          text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
-        });
-      });
 
       return; // 백그라운드 처리로 전환했으므로 여기서 종료
     }
@@ -482,7 +429,7 @@ app.command("/뉴스", async ({ack, respond}) => {
     }
 
     // 새로운 세션 생성
-    const sessionId = createSession(allNews, 'news');
+    const sessionId = createSession(allNews, "news");
 
     const newsItems = allNews.slice(0, 5);
     const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
@@ -524,7 +471,7 @@ app.event("app_mention", async ({event, client}) => {
     if (mentionText.includes("뉴스") || mentionText.includes("news")) {
       // 캐시 상태 확인
       const cacheStatus = getCacheStatus();
-      
+
       if (isLoadingNews()) {
         const status = getCacheStatus();
         responseText = `⏳ 뉴스 데이터를 불러오는 중입니다... (경과 시간: ${status.loadingTime}초)\n잠시만 기다려주세요. ☀️`;
@@ -536,8 +483,10 @@ app.event("app_mention", async ({event, client}) => {
         ];
       } else if (cacheStatus.totalCached === 0) {
         // 캐시가 비어있는 경우 즉시 로딩 메시지 표시
-        console.log(`⚡ 멘션: 캐시 없음 - 즉시 로딩 메시지 표시 후 RSS 파싱 시작`);
-        
+        console.log(
+          `⚡ 멘션: 캐시 없음 - 즉시 로딩 메시지 표시 후 RSS 파싱 시작`
+        );
+
         responseText = `⏳ 뉴스를 불러오는 중입니다...\n처음 로딩이라 시간이 조금 걸릴 수 있습니다. 잠시만 기다려주세요 ☀️`;
         responseBlocks = [
           {
@@ -547,47 +496,48 @@ app.event("app_mention", async ({event, client}) => {
         ];
 
         // 백그라운드에서 RSS 파싱 후 새로운 메시지 전송
-        fetchAllNews().then(async (allNews) => {
-          if (allNews.length > 0) {
-            const sessionId = createSession(allNews, 'news');
+        fetchAllNews()
+          .then(async (allNews) => {
+            if (allNews.length > 0) {
+              const sessionId = createSession(allNews, "news");
 
-            const newsItems = allNews.slice(0, 5);
-            const newBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
+              const newsItems = allNews.slice(0, 5);
+              const newBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
 
+              await client.chat.postMessage({
+                token: process.env.SLACK_BOT_TOKEN,
+                channel: event.channel,
+                text: "✅ 최신 기술 뉴스를 불러왔습니다!",
+                blocks: newBlocks,
+                unfurl_links: false,
+                unfurl_media: false,
+              });
+            } else {
+              await client.chat.postMessage({
+                token: process.env.SLACK_BOT_TOKEN,
+                channel: event.channel,
+                text: "😭 현재 불러올 뉴스가 없습니다.",
+                unfurl_links: false,
+                unfurl_media: false,
+              });
+            }
+          })
+          .catch(async (error) => {
+            console.error(`❌ 멘션 백그라운드 처리 중 오류:`, error);
             await client.chat.postMessage({
               token: process.env.SLACK_BOT_TOKEN,
               channel: event.channel,
-              text: "✅ 최신 기술 뉴스를 불러왔습니다!",
-              blocks: newBlocks,
+              text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
               unfurl_links: false,
               unfurl_media: false,
             });
-          } else {
-            await client.chat.postMessage({
-              token: process.env.SLACK_BOT_TOKEN,
-              channel: event.channel,
-              text: "😭 현재 불러올 뉴스가 없습니다.",
-              unfurl_links: false,
-              unfurl_media: false,
-            });
-          }
-        }).catch(async (error) => {
-          console.error(`❌ 멘션 백그라운드 처리 중 오류:`, error);
-          await client.chat.postMessage({
-            token: process.env.SLACK_BOT_TOKEN,
-            channel: event.channel,
-            text: "😭 오류가 발생하여 뉴스를 가져올 수 없습니다.",
-            unfurl_links: false,
-            unfurl_media: false,
           });
-        });
-        
       } else {
         // 캐시가 있는 경우 일반 처리
         const allNews = await fetchAllNews();
 
         if (allNews.length > 0) {
-          const sessionId = createSession(allNews, 'news');
+          const sessionId = createSession(allNews, "news");
 
           const newsItems = allNews.slice(0, 5);
           responseText = "📰 최신 기술 뉴스를 가져왔습니다!";
@@ -724,9 +674,11 @@ app.action("load_more_extended", async ({action, ack, respond}) => {
       items: newsItems,
       offset,
       sessionId,
-      headerText: `📰 확장된 뉴스 목록 (${offset + 1}-${offset + newsItems.length}/${session.items.length})`,
+      headerText: `📰 확장된 뉴스 목록 (${offset + 1}-${
+        offset + newsItems.length
+      }/${session.items.length})`,
       showLoadMore: true,
-      totalItems: session.items.length
+      totalItems: session.items.length,
     });
 
     await respond({
@@ -762,7 +714,7 @@ app.action("load_older_news", async ({action, ack, respond}) => {
     // 세션이 없으면 다시 로드
     if (!session) {
       const allNews = await fetchAllNews();
-      const newSessionId = createSession(allNews, 'news');
+      const newSessionId = createSession(allNews, "news");
       session = getSession(newSessionId);
 
       const newsItems = allNews.slice(offset, offset + 5);
@@ -829,7 +781,7 @@ app.action("load_first_news", async ({action, ack, respond}) => {
     // 세션이 없으면 다시 로드
     if (!session) {
       const allNews = await fetchAllNews();
-      const newSessionId = createSession(allNews, 'news');
+      const newSessionId = createSession(allNews, "news");
       session = getSession(newSessionId);
 
       const newsItems = allNews.slice(0, 5);
@@ -891,7 +843,7 @@ app.action("show_latest_news", async ({action, ack, respond}) => {
       return;
     }
 
-    const sessionId = createSession(allNews, 'news');
+    const sessionId = createSession(allNews, "news");
 
     const newsItems = allNews.slice(0, 5);
     const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
