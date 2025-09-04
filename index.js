@@ -291,12 +291,10 @@ function createNewsBlocks(options) {
       }
 
       // 다음 뉴스 보기 버튼 (더 최신 뉴스로 이동)
-      // 조건: 1. 첫 페이지가 아님 2. offset + items.length >= 10 3. 마지막 페이지
-      const isNotFirstPage = offset > 0;
-      const hasEnoughItems = offset + items.length >= 10;
-      const isLastPage = offset + items.length >= session.items.length;
+      // 조건: 첫 페이지가 아닌 모든 페이지에서 표출 (offset >= 5)
+      const isNotFirstPage = offset >= 5; // 첫 페이지(1-5) 제외
       
-      if (isNotFirstPage && hasEnoughItems && isLastPage) {
+      if (isNotFirstPage) {
         actions.push({
           type: "button",
           text: {type: "plain_text", text: "⬅️ 더 최신 뉴스", emoji: true},
