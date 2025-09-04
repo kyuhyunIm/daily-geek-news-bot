@@ -298,10 +298,9 @@ async function fetchAllNewsCloudRun(limit = null) {
     console.log("🔄 캐시 미스, RSS 피드 파싱 시작...");
 
     const TOTAL_TARGET = 100;
-    const MIN_ITEMS_PER_FEED = 20;
 
     // 첫 번째 시도: 각 피드당 목표 개수 가져오기
-    let itemsPerFeed = Math.ceil(TOTAL_TARGET / RSS_FEEDS.length);
+    const itemsPerFeed = Math.ceil(TOTAL_TARGET / RSS_FEEDS.length);
     console.log(`🎯 목표: 각 피드에서 ${itemsPerFeed}개 수집`);
 
     // 모든 피드 한번에 처리
@@ -318,15 +317,12 @@ async function fetchAllNewsCloudRun(limit = null) {
       for (const [name, stats] of cache.feedStats) {
         totalCollected += stats.returned;
         console.log(
-          `${name}: ${stats.returned}/${MIN_ITEMS_PER_FEED}개 (원본: ${stats.original}개)`
+          `${name}: ${stats.returned}/${itemsPerFeed}개 (원본: ${stats.original}개)`
         );
 
-        if (
-          stats.returned < MIN_ITEMS_PER_FEED &&
-          stats.original < MIN_ITEMS_PER_FEED
-        ) {
+        if (stats.returned < itemsPerFeed && stats.original < itemsPerFeed) {
           underperformingFeeds.push(name);
-        } else if (stats.original >= MIN_ITEMS_PER_FEED * 2) {
+        } else if (stats.original >= itemsPerFeed * 2) {
           wellPerformingFeeds.push({
             name,
             available: stats.original - stats.returned,
@@ -336,8 +332,7 @@ async function fetchAllNewsCloudRun(limit = null) {
 
       // 부족한 피드가 있고 충분한 데이터를 가진 피드가 있으면 보충
       if (underperformingFeeds.length > 0 && wellPerformingFeeds.length > 0) {
-        const shortfall =
-          underperformingFeeds.length * (MIN_ITEMS_PER_FEED - 10); // 각 부족 피드당 약 10개 부족
+        const shortfall = underperformingFeeds.length * (itemsPerFeed - 10); // 각 부족 피드당 약 10개 부족
         const extraPerFeed = Math.ceil(shortfall / wellPerformingFeeds.length);
 
         console.log(
@@ -352,7 +347,7 @@ async function fetchAllNewsCloudRun(limit = null) {
         );
         const extraResults = await fetchWithFastFail(
           feedsToReparse,
-          MIN_ITEMS_PER_FEED + extraPerFeed
+          itemsPerFeed + extraPerFeed
         );
 
         // 중복 제거하며 병합
@@ -425,6 +420,89 @@ function getCacheStatus() {
   };
 }
 
+// 뉴스 검색 함수
+async function searchNews(keyword, limit = null) {
+  const allNews = await fetchAllNewsCloudRun();
+  
+  if (!keyword || keyword.trim().length === 0) {
+    return limit ? allNews.slice(0, limit) : allNews;
+  }
+  
+  const searchTerm = keyword.toLowerCase().trim();
+  const filteredNews = allNews.filter(item => {
+    const titleMatch = item.title.toLowerCase().includes(searchTerm);
+    const contentMatch = item.contentSnippet && item.contentSnippet.toLowerCase().includes(searchTerm);
+    const sourceMatch = item.source.toLowerCase().includes(searchTerm);
+    
+    return titleMatch || contentMatch || sourceMatch;
+  });
+  
+  console.log(`🔍 검색어 "${keyword}": ${filteredNews.length}개 결과`);
+  
+  return limit ? filteredNews.slice(0, limit) : filteredNews;
+}
+
+// 추가 뉴스 로드 함수 (페이지네이션)
+async function loadMoreNews(offset = 0, limit = 100) {
+  const startTime = Date.now();
+  
+  try {
+    // 전체 뉴스 가져오기
+    let allNews = await fetchAllNewsCloudRun();
+    
+    // 현재 뉴스 수가 요청된 offset + limit보다 적으면 추가로 더 가져오기
+    if (allNews.length < offset + limit) {
+      console.log(`📊 현재 ${allNews.length}개, 목표 ${offset + limit}개 - 추가 수집 필요`);
+      
+      // 추가로 필요한 수량 계산
+      const needed = offset + limit - allNews.length;
+      const extraPerFeed = Math.ceil(needed / RSS_FEEDS.length);
+      
+      console.log(`🔄 각 피드에서 추가 ${extraPerFeed}개씩 수집 시도`);
+      
+      // 캐시를 무시하고 새로운 데이터 가져오기
+      const extraResults = await fetchWithFastFail(RSS_FEEDS, extraPerFeed, true);
+      
+      // 기존 링크 목록 생성
+      const existingLinks = new Set(allNews.map(item => item.link));
+      
+      // 새로운 아이템만 필터링
+      const newItems = extraResults.flat().filter(item => !existingLinks.has(item.link));
+      
+      if (newItems.length > 0) {
+        // 날짜순으로 정렬하여 병합
+        allNews = [...allNews, ...newItems].sort((a, b) => {
+          const dateA = new Date(a.isoDate || a.pubDate);
+          const dateB = new Date(b.isoDate || b.pubDate);
+          return dateB - dateA;
+        });
+        
+        console.log(`✅ ${newItems.length}개 추가 수집 완료 (총 ${allNews.length}개)`);
+      }
+    }
+    
+    // 요청된 범위의 뉴스 반환
+    const requestedNews = allNews.slice(offset, offset + limit);
+    const duration = Date.now() - startTime;
+    
+    console.log(`📈 loadMoreNews: offset=${offset}, limit=${limit}, 반환=${requestedNews.length}개 (${duration}ms)`);
+    
+    return {
+      items: requestedNews,
+      total: allNews.length,
+      hasMore: allNews.length > offset + limit
+    };
+    
+  } catch (error) {
+    console.error(`❌ loadMoreNews 오류:`, error);
+    return {
+      items: [],
+      total: 0,
+      hasMore: false
+    };
+  }
+}
+
 // 로딩 상태 확인
 function isLoadingNews() {
   return isCurrentlyLoading;
@@ -432,6 +510,8 @@ function isLoadingNews() {
 
 module.exports = {
   fetchAllNews: fetchAllNewsCloudRun,
+  searchNews,
+  loadMoreNews,
   getCacheStatus,
   isLoadingNews,
 };

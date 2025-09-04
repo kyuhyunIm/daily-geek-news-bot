@@ -3,6 +3,8 @@ const {App} = require("@slack/bolt");
 const http = require("http");
 const {
   fetchAllNews,
+  searchNews,
+  loadMoreNews,
   isLoadingNews,
   getCacheStatus,
 } = require("./modules/newsCache");
@@ -26,6 +28,9 @@ app.client.on("socket_mode_connect", () => {
 const newsSessions = new Map();
 const SESSION_TTL = 30 * 60 * 1000; // 30분
 
+// 검색 세션 저장
+const searchSessions = new Map();
+
 // 세션 정리 함수
 function cleanupSessions() {
   const now = Date.now();
@@ -34,10 +39,59 @@ function cleanupSessions() {
       newsSessions.delete(key);
     }
   }
+  for (const [key, session] of searchSessions.entries()) {
+    if (now - session.timestamp > SESSION_TTL) {
+      searchSessions.delete(key);
+    }
+  }
 }
 
 // 5분마다 오래된 세션 정리
 setInterval(cleanupSessions, 5 * 60 * 1000);
+
+/**
+ * 새로운 세션 ID 생성
+ * @param {string} prefix - 세션 ID 접두사
+ * @returns {string} 생성된 세션 ID
+ */
+function generateSessionId(prefix) {
+  return `${prefix}_${Date.now()}_${Math.random()
+    .toString(36)
+    .substring(2, 11)}`;
+}
+
+/**
+ * 세션 생성 및 저장
+ * @param {Array} items - 뉴스 아이템 배열
+ * @param {string} type - 세션 타입 ('news', 'search', 'extended')
+ * @param {Object} extraData - 추가 데이터
+ * @returns {string} 생성된 세션 ID
+ */
+function createSession(items, type = 'news', extraData = {}) {
+  const sessionId = generateSessionId(type);
+  const sessionData = {
+    items,
+    timestamp: Date.now(),
+    ...extraData
+  };
+  
+  if (type === 'search') {
+    searchSessions.set(sessionId, sessionData);
+  } else {
+    newsSessions.set(sessionId, sessionData);
+  }
+  
+  return sessionId;
+}
+
+/**
+ * 세션 가져오기
+ * @param {string} sessionId - 세션 ID
+ * @returns {Object|null} 세션 데이터
+ */
+function getSession(sessionId) {
+  return newsSessions.get(sessionId) || searchSessions.get(sessionId) || null;
+}
 
 /**
  * Function that formats news items to Slack-compatible text block
@@ -65,59 +119,107 @@ function formatNewsItem(item) {
  * @param {string} sessionId - Session ID for pagination
  * @returns {Array} Slack message block
  */
-function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
-  const isInitial = currentOffset === 0;
-  const headerText = isInitial
-    ? `📰 최신 기술 뉴스`
-    : `📰 이전 기술 뉴스 (결과 ${currentOffset + 1} - ${
-        currentOffset + newsItems.length
-      })`;
+/**
+ * 뉴스 블록 생성 함수 - 통합 버전
+ * @param {Object} options - 블록 생성 옵션
+ * @returns {Array} Slack message blocks
+ */
+function createNewsBlocks(options) {
+  const {
+    items,
+    offset = 0,
+    sessionId = null,
+    headerText = null,
+    showLoadMore = false,
+    showExtendedLoad = false,
+    totalItems = null,
+    keyword = null
+  } = options;
+
+  // 헤더 텍스트 결정
+  let header;
+  if (headerText) {
+    header = headerText;
+  } else if (keyword) {
+    header = `🔍 검색 결과: "${keyword}" (${totalItems || items.length}개)`;
+  } else if (offset === 0) {
+    header = `📰 최신 기술 뉴스`;
+  } else {
+    header = `📰 이전 기술 뉴스 (${offset + 1} - ${offset + items.length})`;
+  }
 
   const blocks = [
     {
       type: "header",
-      text: {type: "plain_text", text: headerText, emoji: true},
+      text: {type: "plain_text", text: header, emoji: true},
     },
     {type: "divider"},
   ];
 
-  if (newsItems.length === 0) {
+  // 뉴스 아이템 추가
+  if (items.length === 0) {
     blocks.push({
       type: "section",
-      text: {type: "mrkdwn", text: "🔍 더 이상 표시할 뉴스가 없습니다."},
+      text: {type: "mrkdwn", text: keyword ? 
+        `😭 "${keyword}"에 대한 검색 결과가 없습니다.` : 
+        "🔍 더 이상 표시할 뉴스가 없습니다."},
+    });
+  } else {
+    items.forEach((item) => {
+      blocks.push(formatNewsItem(item));
     });
   }
 
-  newsItems.forEach((item) => {
-    blocks.push(formatNewsItem(item));
-  });
-
   blocks.push({type: "divider"});
 
+  // 액션 버튼들
   const actions = [];
+  
   if (sessionId) {
-    const session = newsSessions.get(sessionId);
-    if (
-      session &&
-      newsItems.length > 0 &&
-      currentOffset + newsItems.length < session.items.length
-    ) {
-      actions.push({
-        type: "button",
-        text: {type: "plain_text", text: "더 이전 뉴스 보기 ➡️", emoji: true},
-        value: `${sessionId}_${currentOffset + 5}`,
-        action_id: "load_older_news",
-      });
+    const session = getSession(sessionId);
+    
+    if (session) {
+      // 더 보기 버튼 (일반 페이지네이션)
+      if (items.length > 0 && offset + items.length < session.items.length) {
+        actions.push({
+          type: "button",
+          text: {type: "plain_text", text: showLoadMore ? 
+            "다음 10개 ➡️" : "더 이전 뉴스 보기 ➡️", emoji: true},
+          value: `${sessionId}_${offset + (showLoadMore ? 10 : 5)}`,
+          action_id: showLoadMore ? "load_more_extended" : "load_older_news",
+        });
+      }
+      
+      // 이전 버튼 (확장 모드에서만)
+      if (showLoadMore && offset > 0) {
+        actions.push({
+          type: "button",
+          text: {type: "plain_text", text: "⬅️ 이전 10개", emoji: true},
+          value: `${sessionId}_${offset - 10}`,
+          action_id: "load_more_extended",
+        });
+      }
+      
+      // 처음으로 버튼
+      if (offset > 0) {
+        actions.push({
+          type: "button",
+          text: {type: "plain_text", text: "처음으로 🏠", emoji: true},
+          value: `${sessionId}_0`,
+          action_id: showLoadMore ? "load_more_extended" : "load_first_news",
+        });
+      }
     }
-
-    if (currentOffset > 0) {
-      actions.push({
-        type: "button",
-        text: {type: "plain_text", text: "처음으로 🏠", emoji: true},
-        value: `${sessionId}_0`,
-        action_id: "load_first_news",
-      });
-    }
+  }
+  
+  // 확장 로드 버튼 (첫 페이지에서만)
+  if (showExtendedLoad && offset === 0) {
+    actions.push({
+      type: "button",
+      text: {type: "plain_text", text: "📚 더 많은 뉴스 로드 (100개+)", emoji: true},
+      action_id: "load_extended_news",
+      style: "primary"
+    });
   }
 
   if (actions.length > 0) {
@@ -126,9 +228,141 @@ function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
       elements: actions,
     });
   }
+  
+  // 추가 정보 (확장 모드)
+  if (showLoadMore && totalItems) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `💡 총 ${totalItems}개 아이템 로드됨`,
+        },
+      ],
+    });
+  }
 
   return blocks;
 }
+
+function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
+  return createNewsBlocks({
+    items: newsItems,
+    offset: currentOffset,
+    sessionId,
+    showExtendedLoad: currentOffset === 0 // 첫 페이지에서만 확장 로드 버튼 표시
+  });
+}
+
+// 뉴스 검색 명령어
+app.command("/뉴스검색", async ({ack, respond, command}) => {
+  const startTime = Date.now();
+  await ack();
+
+  try {
+    const keyword = command.text.trim();
+    
+    if (!keyword) {
+      await respond({
+        response_type: "ephemeral",
+        text: "🔍 검색어를 입력해주세요. 예: `/뉴스검색 AI`",
+      });
+      return;
+    }
+
+    console.log(`🔍 검색 요청: "${keyword}"`);
+
+    // 검색 실행
+    const searchResults = await searchNews(keyword);
+
+    if (searchResults.length === 0) {
+      await respond({
+        response_type: "ephemeral",
+        text: `😭 "${keyword}"에 대한 검색 결과가 없습니다.`,
+      });
+      return;
+    }
+
+    // 검색 세션 생성
+    const sessionId = createSession(searchResults, 'search', { keyword });
+
+    const newsItems = searchResults.slice(0, 5);
+    const blocks = createNewsBlocks({
+      items: newsItems,
+      sessionId,
+      keyword,
+      totalItems: searchResults.length
+    });
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `✅ 검색 완료: "${keyword}" - ${searchResults.length}개 결과 (${duration}ms)`
+    );
+
+    await respond({
+      response_type: "in_channel",
+      text: `검색 결과: "${keyword}"`,
+      blocks: blocks,
+    });
+  } catch (error) {
+    console.error("❌ 검색 중 오류:", error);
+    await respond({
+      response_type: "ephemeral",
+      text: "😭 검색 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+    });
+  }
+});
+
+// 확장 뉴스 로드 액션 (버튼 클릭)
+app.action("load_extended_news", async ({action, ack, respond}) => {
+  const startTime = Date.now();
+  await ack();
+
+  try {
+    console.log("📚 확장 뉴스 로드 요청");
+
+    // loadMoreNews 함수 호출 (200개까지 로드)
+    const result = await loadMoreNews(0, 200);
+
+    if (result.items.length === 0) {
+      await respond({
+        response_type: "ephemeral",
+        text: "😭 불러올 뉴스가 없습니다.",
+      });
+      return;
+    }
+
+    // 확장된 세션 생성
+    const sessionId = createSession(result.items, 'extended', { extended: true });
+
+    const newsItems = result.items.slice(0, 10); // 처음 10개 표시
+    const blocks = createNewsBlocks({
+      items: newsItems,
+      offset: 0,
+      sessionId,
+      headerText: `📰 확장된 뉴스 목록 (총 ${result.items.length}개)`,
+      showLoadMore: true,
+      totalItems: result.items.length
+    });
+
+    const duration = Date.now() - startTime;
+    console.log(
+      `✅ 확장 뉴스 로드 완료: ${result.items.length}개 (${duration}ms)`
+    );
+
+    await respond({
+      replace_original: true,
+      text: "확장된 뉴스 목록입니다!",
+      blocks: blocks,
+    });
+  } catch (error) {
+    console.error("❌ 확장 로드 중 오류:", error);
+    await respond({
+      response_type: "ephemeral",
+      text: "😭 뉴스를 불러오는 중 오류가 발생했습니다.",
+    });
+  }
+});
 
 // 캐시 상태 확인 커맨드
 app.command("/캐시상태", async ({ack, respond}) => {
@@ -211,13 +445,7 @@ app.command("/뉴스", async ({ack, respond}) => {
         }
 
         // 새로운 세션 생성
-        const sessionId = `news_${Date.now()}_${Math.random()
-          .toString(36)
-          .substr(2, 9)}`;
-        newsSessions.set(sessionId, {
-          items: allNews,
-          timestamp: Date.now(),
-        });
+        const sessionId = createSession(allNews, 'news');
 
         const newsItems = allNews.slice(0, 5);
         const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
@@ -254,13 +482,7 @@ app.command("/뉴스", async ({ack, respond}) => {
     }
 
     // 새로운 세션 생성
-    const sessionId = `news_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    newsSessions.set(sessionId, {
-      items: allNews,
-      timestamp: Date.now(),
-    });
+    const sessionId = createSession(allNews, 'news');
 
     const newsItems = allNews.slice(0, 5);
     const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
@@ -327,13 +549,7 @@ app.event("app_mention", async ({event, client}) => {
         // 백그라운드에서 RSS 파싱 후 새로운 메시지 전송
         fetchAllNews().then(async (allNews) => {
           if (allNews.length > 0) {
-            const sessionId = `news_${Date.now()}_${Math.random()
-              .toString(36)
-              .substr(2, 9)}`;
-            newsSessions.set(sessionId, {
-              items: allNews,
-              timestamp: Date.now(),
-            });
+            const sessionId = createSession(allNews, 'news');
 
             const newsItems = allNews.slice(0, 5);
             const newBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
@@ -371,13 +587,7 @@ app.event("app_mention", async ({event, client}) => {
         const allNews = await fetchAllNews();
 
         if (allNews.length > 0) {
-          const sessionId = `news_${Date.now()}_${Math.random()
-            .toString(36)
-            .substr(2, 9)}`;
-          newsSessions.set(sessionId, {
-            items: allNews,
-            timestamp: Date.now(),
-          });
+          const sessionId = createSession(allNews, 'news');
 
           const newsItems = allNews.slice(0, 5);
           responseText = "📰 최신 기술 뉴스를 가져왔습니다!";
@@ -490,6 +700,51 @@ app.event("app_mention", async ({event, client}) => {
   }
 });
 
+app.action("load_more_extended", async ({action, ack, respond}) => {
+  await ack();
+
+  console.log(`🔧 [load_more_extended] 버튼 클릭됨, value: ${action.value}`);
+
+  try {
+    const parts = action.value.split("_");
+    const offset = parseInt(parts[parts.length - 1], 10);
+    const sessionId = parts.slice(0, -1).join("_");
+
+    const session = newsSessions.get(sessionId);
+    if (!session) {
+      await respond({
+        response_type: "ephemeral",
+        text: "😭 세션이 만료되었습니다. 다시 시도해주세요.",
+      });
+      return;
+    }
+
+    const newsItems = session.items.slice(offset, offset + 10);
+    const blocks = createNewsBlocks({
+      items: newsItems,
+      offset,
+      sessionId,
+      headerText: `📰 확장된 뉴스 목록 (${offset + 1}-${offset + newsItems.length}/${session.items.length})`,
+      showLoadMore: true,
+      totalItems: session.items.length
+    });
+
+    await respond({
+      replace_original: true,
+      text: "확장된 뉴스 목록",
+      blocks: blocks,
+    });
+
+    console.log(`✅ [load_more_extended] 처리 완료 (offset: ${offset})`);
+  } catch (error) {
+    console.error(`❌ [load_more_extended] 처리 중 오류:`, error);
+    await respond({
+      response_type: "ephemeral",
+      text: "😭 오류가 발생했습니다.",
+    });
+  }
+});
+
 app.action("load_older_news", async ({action, ack, respond}) => {
   await ack();
 
@@ -502,19 +757,13 @@ app.action("load_older_news", async ({action, ack, respond}) => {
     const sessionId = parts.slice(0, -1).join("_");
 
     // 세션 가져오기
-    let session = newsSessions.get(sessionId);
+    let session = getSession(sessionId);
 
     // 세션이 없으면 다시 로드
     if (!session) {
       const allNews = await fetchAllNews();
-      const newSessionId = `news_${Date.now()}_${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
-      session = {
-        items: allNews,
-        timestamp: Date.now(),
-      };
-      newsSessions.set(newSessionId, session);
+      const newSessionId = createSession(allNews, 'news');
+      session = getSession(newSessionId);
 
       const newsItems = allNews.slice(offset, offset + 5);
       const newBlocks = formatNewsToBlocks(newsItems, offset, newSessionId);
@@ -575,19 +824,13 @@ app.action("load_first_news", async ({action, ack, respond}) => {
     const sessionId = parts.slice(0, -1).join("_");
 
     // 세션 가져오기
-    let session = newsSessions.get(sessionId);
+    let session = getSession(sessionId);
 
     // 세션이 없으면 다시 로드
     if (!session) {
       const allNews = await fetchAllNews();
-      const newSessionId = `news_${Date.now()}_${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
-      session = {
-        items: allNews,
-        timestamp: Date.now(),
-      };
-      newsSessions.set(newSessionId, session);
+      const newSessionId = createSession(allNews, 'news');
+      session = getSession(newSessionId);
 
       const newsItems = allNews.slice(0, 5);
       const newBlocks = formatNewsToBlocks(newsItems, offset, newSessionId);
@@ -648,13 +891,7 @@ app.action("show_latest_news", async ({action, ack, respond}) => {
       return;
     }
 
-    const sessionId = `news_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
-    newsSessions.set(sessionId, {
-      items: allNews,
-      timestamp: Date.now(),
-    });
+    const sessionId = createSession(allNews, 'news');
 
     const newsItems = allNews.slice(0, 5);
     const messageBlocks = formatNewsToBlocks(newsItems, 0, sessionId);
