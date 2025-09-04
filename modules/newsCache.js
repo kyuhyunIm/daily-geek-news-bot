@@ -217,7 +217,9 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
 
 // RSS 피드 목록 (안정성 순으로 정렬)
 const RSS_FEEDS = [
+  {name: "Kakao Tech", url: "https://tech.kakao.com/rss"},
   {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
+  {name: "Naver D2", url: "https://d2.naver.com/d2.atom"},
   {name: "Hacker News", url: "https://hnrss.org/frontpage"},
   {name: "Dev.to", url: "https://dev.to/feed"},
   {name: "GitHub Blog", url: "https://github.blog/feed/"},
