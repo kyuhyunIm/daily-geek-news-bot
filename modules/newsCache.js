@@ -218,16 +218,13 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
 // RSS 피드 목록 (안정성 순으로 정렬)
 const RSS_FEEDS = [
   {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
-  {name: "GeekNewsFeed", url: "https://news.hada.io/rss/news"},
-  {
-    name: "LineTechNews",
-    url: "https://techblog.lycorp.co.jp/ko/feed/index.xml",
-  },
-  {
-    name: "CoupangNewsFeed",
-    url: "https://medium.com/feed/coupang-engineering",
-  },
-  {name: "DaangnNewsFeed", url: "https://medium.com/feed/daangn"},
+  {name: "Hacker News", url: "https://hnrss.org/frontpage"},
+  {name: "Dev.to", url: "https://dev.to/feed"},
+  {name: "GitHub Blog", url: "https://github.blog/feed/"},
+  {name: "CSS Tricks", url: "https://css-tricks.com/feed/"},
+  {name: "Smashing Magazine", url: "https://www.smashingmagazine.com/feed/"},
+  {name: "A List Apart", url: "https://alistapart.com/main/feed/"},
+  {name: "SitePoint", url: "https://www.sitepoint.com/feed/"},
 ];
 
 // 병렬 처리 - 모든 피드 완료까지 대기 (개별 타임아웃 제거)
@@ -423,84 +420,25 @@ function getCacheStatus() {
 // 뉴스 검색 함수
 async function searchNews(keyword, limit = null) {
   const allNews = await fetchAllNewsCloudRun();
-  
+
   if (!keyword || keyword.trim().length === 0) {
     return limit ? allNews.slice(0, limit) : allNews;
   }
-  
+
   const searchTerm = keyword.toLowerCase().trim();
-  const filteredNews = allNews.filter(item => {
+  const filteredNews = allNews.filter((item) => {
     const titleMatch = item.title.toLowerCase().includes(searchTerm);
-    const contentMatch = item.contentSnippet && item.contentSnippet.toLowerCase().includes(searchTerm);
+    const contentMatch =
+      item.contentSnippet &&
+      item.contentSnippet.toLowerCase().includes(searchTerm);
     const sourceMatch = item.source.toLowerCase().includes(searchTerm);
-    
+
     return titleMatch || contentMatch || sourceMatch;
   });
-  
-  console.log(`🔍 검색어 "${keyword}": ${filteredNews.length}개 결과`);
-  
-  return limit ? filteredNews.slice(0, limit) : filteredNews;
-}
 
-// 추가 뉴스 로드 함수 (페이지네이션)
-async function loadMoreNews(offset = 0, limit = 100) {
-  const startTime = Date.now();
-  
-  try {
-    // 전체 뉴스 가져오기
-    let allNews = await fetchAllNewsCloudRun();
-    
-    // 현재 뉴스 수가 요청된 offset + limit보다 적으면 추가로 더 가져오기
-    if (allNews.length < offset + limit) {
-      console.log(`📊 현재 ${allNews.length}개, 목표 ${offset + limit}개 - 추가 수집 필요`);
-      
-      // 추가로 필요한 수량 계산
-      const needed = offset + limit - allNews.length;
-      const extraPerFeed = Math.ceil(needed / RSS_FEEDS.length);
-      
-      console.log(`🔄 각 피드에서 추가 ${extraPerFeed}개씩 수집 시도`);
-      
-      // 캐시를 무시하고 새로운 데이터 가져오기
-      const extraResults = await fetchWithFastFail(RSS_FEEDS, extraPerFeed, true);
-      
-      // 기존 링크 목록 생성
-      const existingLinks = new Set(allNews.map(item => item.link));
-      
-      // 새로운 아이템만 필터링
-      const newItems = extraResults.flat().filter(item => !existingLinks.has(item.link));
-      
-      if (newItems.length > 0) {
-        // 날짜순으로 정렬하여 병합
-        allNews = [...allNews, ...newItems].sort((a, b) => {
-          const dateA = new Date(a.isoDate || a.pubDate);
-          const dateB = new Date(b.isoDate || b.pubDate);
-          return dateB - dateA;
-        });
-        
-        console.log(`✅ ${newItems.length}개 추가 수집 완료 (총 ${allNews.length}개)`);
-      }
-    }
-    
-    // 요청된 범위의 뉴스 반환
-    const requestedNews = allNews.slice(offset, offset + limit);
-    const duration = Date.now() - startTime;
-    
-    console.log(`📈 loadMoreNews: offset=${offset}, limit=${limit}, 반환=${requestedNews.length}개 (${duration}ms)`);
-    
-    return {
-      items: requestedNews,
-      total: allNews.length,
-      hasMore: allNews.length > offset + limit
-    };
-    
-  } catch (error) {
-    console.error(`❌ loadMoreNews 오류:`, error);
-    return {
-      items: [],
-      total: 0,
-      hasMore: false
-    };
-  }
+  console.log(`🔍 검색어 "${keyword}": ${filteredNews.length}개 결과`);
+
+  return limit ? filteredNews.slice(0, limit) : filteredNews;
 }
 
 // 로딩 상태 확인
@@ -511,7 +449,6 @@ function isLoadingNews() {
 module.exports = {
   fetchAllNews: fetchAllNewsCloudRun,
   searchNews,
-  loadMoreNews,
   getCacheStatus,
   isLoadingNews,
 };
