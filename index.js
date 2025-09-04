@@ -102,11 +102,14 @@ function formatNewsItem(item) {
   const date = isoDate || pubDate;
   const formattedDate = new Date(date).toLocaleDateString("ko-KR");
 
+  // 제목에서 Slack markdown 특수문자 처리
+  const cleanTitle = title.trim().replace(/[<>|*_`]/g, '');
+
   return {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*<${link}|${title.trim()}>*\n_${source} | ${formattedDate}_`,
+      text: `*<${link}|${cleanTitle}>*\n_${source} | ${formattedDate}_`,
     },
   };
 }
@@ -240,10 +243,16 @@ function createNewsBlocks(options) {
 }
 
 function formatNewsToBlocks(newsItems, currentOffset = 0, sessionId = null) {
+  const session = getSession(sessionId);
+  const keyword = session?.keyword || null;
+  const totalItems = session?.items?.length || newsItems.length;
+  
   return createNewsBlocks({
     items: newsItems,
     offset: currentOffset,
     sessionId,
+    keyword,
+    totalItems,
   });
 }
 
