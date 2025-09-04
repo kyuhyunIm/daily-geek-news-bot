@@ -12,7 +12,7 @@ const parser = new Parser({
 
 // Axios 인스턴스 생성 (Cloud Run 최적화)
 const httpClient = axios.create({
-  timeout: 12000, // 12초 타임아웃 (빠른 응답 우선)
+  timeout: 30000, // 30초 타임아웃 (확장된 RSS 소스 대응)
   maxRedirects: 3,
   headers: {
     "User-Agent":
@@ -217,7 +217,6 @@ async function parseRSSFeedSafe(feed, itemsPerFeed) {
 
 // RSS 피드 목록 (안정성 순으로 정렬)
 const RSS_FEEDS = [
-  {name: "Kakao Tech", url: "https://tech.kakao.com/rss"},
   {name: "Toss Tech", url: "https://toss.tech/rss.xml"},
   {name: "Naver D2", url: "https://d2.naver.com/d2.atom"},
   {name: "Hacker News", url: "https://hnrss.org/frontpage"},
@@ -226,7 +225,6 @@ const RSS_FEEDS = [
   {name: "CSS Tricks", url: "https://css-tricks.com/feed/"},
   {name: "Smashing Magazine", url: "https://www.smashingmagazine.com/feed/"},
   {name: "A List Apart", url: "https://alistapart.com/main/feed/"},
-  {name: "SitePoint", url: "https://www.sitepoint.com/feed/"},
 ];
 
 // 병렬 처리 - 모든 피드 완료까지 대기 (개별 타임아웃 제거)
