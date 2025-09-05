@@ -203,7 +203,7 @@ function formatNewsItem(item) {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*<${link}|${cleanTitle}>*\n_${source} | ${formattedDate}_`,
+      text: `*<${link}|${cleanTitle}>*\n${source} | ${formattedDate}`,
     },
   };
 }
